@@ -1,12 +1,12 @@
 # Dorm Allocation System
 
-Senior Design Project - Full Stack Dorm Allocation Application
+Software Engineering  Project - Full Stack Dorm Allocation Application
 
 Discord: https://discord.gg/H7wzewef
 
 ## About
 
-This is our senior design project for creating a dorm room allocation system. The goal is to build an algorithm that can automatically assign students to dorm rooms based on their preferences and requirements.
+This is our software engineering project for creating a dorm room allocation system. The goal is to build an algorithm that can automatically assign students to dorm rooms based on their preferences and requirements.
 
 ## Team Members
 - [Add your names here]
@@ -165,4 +165,4 @@ Join our Discord for discussions: https://discord.gg/H7wzewef
 
 ---
 
-**Senior Design Project - Fall 2024/Spring 2025**
+**Software Engineering Project - Fall 2025**
