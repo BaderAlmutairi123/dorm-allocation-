@@ -9,14 +9,14 @@ Discord: https://discord.gg/H7wzewef
 This is our software engineering project for creating a dorm room allocation system. The goal is to build an algorithm that can automatically assign students to dorm rooms based on their preferences and requirements.
 
 ## Team Members
-- [Add your names here]
+- []
 
 ## Tech Stack
 
 - **Frontend**: Next.js 15, React 19, TypeScript
 - **Styling**: Tailwind CSS
 - **Backend**: Next.js API Routes (to be implemented)
-- **Database**: TBD
+- **Database**: Supabase
 
 ## Getting Started
 
