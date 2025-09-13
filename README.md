@@ -159,10 +159,5 @@ npm run lint
 - Timeline for each phase?
 - Which ORM to use with PostgreSQL? (Prisma vs Drizzle vs raw SQL)
 
-## Contact
-
-Join our Discord for discussions: https://discord.gg/H7wzewef
-
----
 
 **Software Engineering Project - Fall 2025**
