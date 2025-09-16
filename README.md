@@ -16,7 +16,7 @@ This is our software engineering project for creating a dorm room allocation sys
 - **Frontend**: Next.js 15, React 19, TypeScript
 - **Styling**: Tailwind CSS
 - **Backend**: Next.js API Routes (to be implemented)
-- **Database**: Supabase
+- **Database**: PostgreSQL
 
   ## Pages
 
