@@ -18,6 +18,13 @@ This is our software engineering project for creating a dorm room allocation sys
 - **Backend**: Next.js API Routes (to be implemented)
 - **Database**: Supabase
 
+  ## Pages
+
+  - Student Signin
+  - Dorm Application Process
+  - Student Block
+  - Potential Roommates
+
 ## Getting Started
 
 ### Prerequisites
