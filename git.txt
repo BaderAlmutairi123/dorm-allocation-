@@ -1,12 +1,30 @@
+
+Updating Inside directory 
 git add .
 git commit -m "Describe what you changed"
 git push origin main
 
+Getting latest updates 
+git fetch
+git pull origin main
 
-git pull origin main 
-
-^ For when updating code from others edits 
+^ For when updating code from others edits
 
 git checkout -b new-branch-name
 
-^ creating new branches 
+^ creating new branches
+
+BRANCH COMMANDS:
+git branch                     <- see all local branches
+git branch -a                  <- see all branches (local + remote)
+git checkout branch-name       <- switch to existing branch
+git push origin branch-name    <- push current branch to remote
+
+MERGING:
+git checkout main              <- switch to main first
+git merge branch-name          <- merge branch-name into main
+git push origin main           <- push merged changes
+
+UPDATING BRANCH WITH MAIN:
+git checkout your-branch
+git pull origin main           <- get latest main changes into your branch 
