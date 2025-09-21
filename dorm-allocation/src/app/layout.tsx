@@ -1,6 +1,17 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import Link from "next/link";
+import {
+  NavigationMenu,
+  NavigationMenuContent,
+  NavigationMenuIndicator,
+  NavigationMenuItem,
+  NavigationMenuLink,
+  NavigationMenuList,
+  NavigationMenuTrigger,
+  NavigationMenuViewport,
+} from "@/components/ui/navigation-menu";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -24,10 +35,66 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        {children}
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+        <header className="border-b">
+          <div className="container mx-auto px-4 py-3">
+            <NavigationMenu>
+              <NavigationMenuList>
+                <NavigationMenuItem>
+                  <NavigationMenuTrigger>Dorm Application</NavigationMenuTrigger>
+                  <NavigationMenuContent>
+                    <ul className="grid gap-3 p-4 md:w-[400px]">
+                      <li>
+                        <NavigationMenuLink asChild>
+                          <Link href="/sign-in" className="block rounded-md p-2 hover:bg-accent">
+                            <div className="font-medium">Student Sign In</div>
+                            <p className="text-sm text-muted-foreground">
+                              Access your account to view and manage your application.
+                            </p>
+                          </Link>
+                        </NavigationMenuLink>
+                      </li>
+                      <li>
+                        <NavigationMenuLink asChild>
+                          <Link href="/application" className="block rounded-md p-2 hover:bg-accent">
+                            <div className="font-medium">Dorm Application Process</div>
+                            <p className="text-sm text-muted-foreground">
+                              Step-by-step guide to submitting your dorm application.
+                            </p>
+                          </Link>
+                        </NavigationMenuLink>
+                      </li>
+                      <li>
+                        <NavigationMenuLink asChild>
+                          <Link href="/blocks" className="block rounded-md p-2 hover:bg-accent">
+                            <div className="font-medium">Student Block</div>
+                            <p className="text-sm text-muted-foreground">
+                              Choose preferred buildings/floors and block options.
+                            </p>
+                          </Link>
+                        </NavigationMenuLink>
+                      </li>
+                      <li>
+                        <NavigationMenuLink asChild>
+                          <Link href="/roommates" className="block rounded-md p-2 hover:bg-accent">
+                            <div className="font-medium">Potential Roommates</div>
+                            <p className="text-sm text-muted-foreground">
+                              Find and match with compatible roommates.
+                            </p>
+                          </Link>
+                        </NavigationMenuLink>
+                      </li>
+                    </ul>
+                  </NavigationMenuContent>
+                </NavigationMenuItem>
+
+                
+              </NavigationMenuList>
+            </NavigationMenu>
+          </div>
+        </header>
+
+        <main>{children}</main>
       </body>
     </html>
   );
