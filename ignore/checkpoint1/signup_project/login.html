@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class ="wrapper">
+        <h1>Login</h1>
+        <div id="error-message"></div>
+        <form id="form">
+            <div>
+                <label for = "email-input">
+                    <span>@</span>
+                </label>
+                <input type = "email" name = "email" id = "email-input" placeholder = "Email">
+            </div>
+            <div>
+                <label for = "password-input">
+                    <img src ="lock.svg" alt ="Lock Icon"></img>
+                </label>
+                <input type = "password" name = "password" id = "password-input" placeholder = "Password">
+            </div>
+            <button type = "submit">Login</button>
+        </form>
+        <p>
+            Don't have an Account? <a href = "signup.html">Sign up</a>
+        </p>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>
