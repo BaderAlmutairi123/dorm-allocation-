@@ -12,6 +12,7 @@ import {
   NavigationMenuTrigger,
   NavigationMenuViewport,
 } from "@/components/ui/navigation-menu";
+import AuthButton from "@/components/auth/AuthButton";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -37,7 +38,7 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <header className="border-b">
-          <div className="container mx-auto px-4 py-3">
+          <div className="container mx-auto px-4 py-3 flex justify-between items-center">
             <NavigationMenu>
               <NavigationMenuList>
                 <NavigationMenuItem>
@@ -91,6 +92,7 @@ export default function RootLayout({
                 
               </NavigationMenuList>
             </NavigationMenu>
+            <AuthButton />
           </div>
         </header>
 
