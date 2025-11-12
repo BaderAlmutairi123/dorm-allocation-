@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { setAuthState } from '@/lib/auth'
+import { authClient } from '@/lib/supabase/auth'
 
 export default function SignInPage() {
   const [email, setEmail] = useState('')
@@ -17,24 +17,16 @@ export default function SignInPage() {
     setError('')
 
     try {
-      const response = await fetch('/api/auth/signin', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email, password }),
-      })
+      // Sign in using Supabase client-side auth
+      const data = await authClient.signIn(email, password)
 
-      const data = await response.json()
-
-      if (response.ok) {
-        setAuthState(data.user, data.token)
+      // Success - Supabase automatically handles session storage
+      if (data?.user) {
         router.push('/application')
-      } else {
-        setError(data.message || 'Sign in failed')
+        router.refresh() // Refresh to update auth state
       }
-    } catch (err) {
-      setError('An error occurred. Please try again.')
+    } catch (err: any) {
+      setError(err.message || 'An error occurred. Please try again.')
     } finally {
       setIsLoading(false)
     }
