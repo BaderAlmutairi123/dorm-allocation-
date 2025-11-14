@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useState } from "react";
 
 export default function ApplicationPage() {
@@ -18,6 +19,9 @@ export default function ApplicationPage() {
     major: "",
     year: "",
     roomType: "",
+    bedtime: "", 
+    cleanliness: "", 
+    noiseLevel: "", 
     specialNeeds: "",
   });
 
@@ -183,6 +187,55 @@ export default function ApplicationPage() {
                     </SelectContent>
                   </Select>
                 </div>
+
+                <div className = "space-y-2"> 
+                  <Label>Typical Bedtime</Label> 
+                  <RadioGroup 
+                     value = {formData.bedtime}
+                    onValueChange = {(value) => handleInputChange("bedtime", value)}> 
+                    <div className = "flex items-center space-x-2">
+                      <RadioGroupItem value = "before 10pm" id="before-10pm"/>
+                      <Label htmlFor="before-10pm" className="font-normal cursor-pointer"> Before 10pm</Label> </div>
+                    <div className= "flex items-center space-x-2"> 
+                      <RadioGroupItem value="10pm-2am" id="10pm-12am" />
+                      <Label htmlFor= "10pm-12am" className="font-normal cursor-pointer">10pm-12am</Label></div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="12am-2am" id="12am-2am"/>
+                      <Label htmlFor="12am-2am" className="font-normal cursor-pointer">12am-2pm</Label></div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="after-2am" id="after-2am"/>
+                      <Label htmlFor="after-2am" className="font-normal cursor-pointer">After 2am</Label></div>
+                    </RadioGroup> 
+                    </div> 
+                
+                    <div className = "space-y-2">
+                      <Label htmlFor="cleanliness">Cleanliness Level</Label>
+                      <Select onValueChange= {(value) => handleInputChange("cleanliness",value)}>
+                          <SelectTrigger id="cleanliness">
+                             <SelectValue placeholder="How tidy are you?" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="very-neat">Vert neat and organized</SelectItem>
+                            <SelectItem value="neat">Neat and generally clean and tidy</SelectItem>
+                            <SelectItem value="relaxed">Relaxed and not worried about mess</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="noiseLevel">Study Environment Preference</Label>
+                      <Select onValueChange={(value) => handleInputChange("noiseLevel", value)}>
+                          <SelectTrigger id="noiseLevel">
+                            <SelectValue placeholder="Select your noise preference"/>
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="silent">Complete silence required</SelectItem>
+                            <SelectItem value="quiet">Quiet environment preferred</SelectItem>
+                            <SelectItem value="background">Background noise is okay</SelectItem>
+                            <SelectItem value="any">Any noise level is acceptable</SelectItem>
+                          </SelectContent>
+                      </Select>
+                    </div>
 
                 <div className="space-y-2">
                   <Label htmlFor="specialNeeds">Special Accommodations or Medical Needs</Label>
