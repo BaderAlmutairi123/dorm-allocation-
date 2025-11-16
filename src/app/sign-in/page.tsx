@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { authClient } from '@/lib/supabase/auth'
+import Link from 'next/link'
 
 export default function SignInPage() {
   const [email, setEmail] = useState('')
@@ -37,10 +38,10 @@ export default function SignInPage() {
       <div className="max-w-md w-full space-y-8">
         <div>
           <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-            Sign in to your account
+            Log in to your account
           </h2>
           <p className="mt-2 text-center text-sm text-gray-600">
-            Access your dorm allocation account
+            Access your Hofstra account
           </p>
         </div>
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
@@ -95,10 +96,16 @@ export default function SignInPage() {
             </button>
           </div>
 
-          <div className="text-center">
-            <a href="#" className="font-medium text-indigo-600 hover:text-indigo-500">
+          <div className="text-center space-y-2">
+            <a href="#" className="block font-medium text-indigo-600 hover:text-indigo-500">
               Forgot your password?
             </a>
+            <p className="text-sm text-gray-600">
+              Don't have an account?{' '}
+              <Link href="/sign-up" className="font-medium text-indigo-600 hover:text-indigo-500">
+                Sign up
+              </Link>
+            </p>
           </div>
         </form>
       </div>
