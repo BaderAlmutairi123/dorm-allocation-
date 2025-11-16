@@ -10,11 +10,129 @@ import { useState, useEffect } from "react";
 import { authClient } from "@/lib/supabase/auth";
 import { useRouter } from "next/navigation";
 
+// Hofstra University Majors
+const HOFSTRA_MAJORS = [
+  "Accounting",
+  "Africana Studies",
+  "American Studies",
+  "Anthropology",
+  "Applied Physics",
+  "Art History",
+  "Asian Studies",
+  "Athletic Training",
+  "Audio/Radio Production and Studies",
+  "Biochemistry",
+  "Bioengineering",
+  "Biology",
+  "Business Analytics",
+  "Chemistry",
+  "Chinese",
+  "Chinese Studies",
+  "Civil Engineering",
+  "Classics",
+  "Community Health",
+  "Comparative Literature and Languages",
+  "Computer Engineering",
+  "Computer Science",
+  "Computer Science and Mathematics",
+  "Computer Science and Cybersecurity",
+  "Criminology",
+  "Dance",
+  "Drama",
+  "Early Childhood/Childhood Education",
+  "Economics",
+  "Economics (Business)",
+  "Electrical Engineering",
+  "Elementary Education",
+  "Engineering Science",
+  "English",
+  "English Education",
+  "Entrepreneurship",
+  "Environmental Resources",
+  "Exercise Physiology",
+  "Film Studies and Production",
+  "Filmmaking",
+  "Fine Arts",
+  "Foreign Language Education",
+  "Forensic Science",
+  "French",
+  "Geographic Information Systems",
+  "Geography",
+  "Geology",
+  "German",
+  "Global Studies",
+  "Health Education",
+  "Health Science",
+  "Hebrew",
+  "History",
+  "Individually Designed Major (Humanities/Natural Sciences/Social Sciences)",
+  "Industrial Engineering",
+  "Information Systems",
+  "International Business",
+  "Italian",
+  "Japanese",
+  "Japanese Studies",
+  "Jewish Studies",
+  "Journalism",
+  "Labor Studies",
+  "Latin",
+  "Latin American and Caribbean Studies",
+  "Liberal Arts",
+  "Linguistics",
+  "Management",
+  "Marketing",
+  "Mass Media Studies",
+  "Mathematical Business Economics",
+  "Mathematical Economics",
+  "Mathematical Finance",
+  "Mathematics",
+  "Mathematics Education",
+  "Mechanical Engineering",
+  "Music",
+  "Music Business",
+  "Music Education",
+  "Neuroscience",
+  "Nursing",
+  "Philosophy",
+  "Physical Education",
+  "Physics",
+  "Political Science",
+  "Pre-Health Studies",
+  "Pre-Medical Studies",
+  "Psychology",
+  "Public Policy and Public Service",
+  "Public Relations",
+  "Religion",
+  "Religion and Contemporary Issues",
+  "Rhetoric and Public Advocacy",
+  "Russian",
+  "Science Education",
+  "STEM (Science, Technology, Engineering & Mathematics)",
+  "Social Studies Education",
+  "Sociology",
+  "Spanish",
+  "Speech-Language-Hearing Sciences",
+  "Sports Management",
+  "Supply Chain Management",
+  "Sustainability Studies",
+  "Television Production and Studies",
+  "Theater Arts",
+  "Urban Ecology",
+  "Video/Television",
+  "Video/Television and Business",
+  "Video/Television and Film",
+  "Women's Studies",
+  "Writing for the Screen",
+  "Writing Studies",
+];
+
 export default function ApplicationPage() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
+  const [majorSearch, setMajorSearch] = useState("");
+  const [showMajorDropdown, setShowMajorDropdown] = useState(false);
   const [formData, setFormData] = useState({
     studentId: "",
     firstName: "",
@@ -24,7 +142,6 @@ export default function ApplicationPage() {
     gender: "",
     major: "",
     year: "",
-    gpa: "",
     roomType: "",
     bedtime: "",
     noiseLevel: "",
@@ -32,6 +149,11 @@ export default function ApplicationPage() {
     guestPolicy: "",
     specialNeeds: "",
   });
+
+  // Filter majors based on search
+  const filteredMajors = HOFSTRA_MAJORS.filter(major =>
+    major.toLowerCase().includes(majorSearch.toLowerCase())
+  );
 
   // Load user data from auth on mount
   useEffect(() => {
@@ -69,6 +191,24 @@ export default function ApplicationPage() {
     loadUserData();
   }, [router]);
 
+  // Close major dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (!target.closest('#major') && !target.closest('.major-dropdown')) {
+        setShowMajorDropdown(false);
+      }
+    };
+
+    if (showMajorDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showMajorDropdown]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
@@ -104,6 +244,28 @@ export default function ApplicationPage() {
 
   const handleInputChange = (field: string, value: string) => {
     setFormData({ ...formData, [field]: value });
+  };
+
+  const formatPhoneNumber = (value: string) => {
+    // Remove all non-digit characters
+    const phoneNumber = value.replace(/\D/g, '');
+
+    // Limit to 10 digits
+    const limitedPhoneNumber = phoneNumber.substring(0, 10);
+
+    // Format as (XXX) XXX-XXXX
+    if (limitedPhoneNumber.length <= 3) {
+      return limitedPhoneNumber;
+    } else if (limitedPhoneNumber.length <= 6) {
+      return `(${limitedPhoneNumber.slice(0, 3)}) ${limitedPhoneNumber.slice(3)}`;
+    } else {
+      return `(${limitedPhoneNumber.slice(0, 3)}) ${limitedPhoneNumber.slice(3, 6)}-${limitedPhoneNumber.slice(6)}`;
+    }
+  };
+
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const formatted = formatPhoneNumber(e.target.value);
+    setFormData({ ...formData, phone: formatted });
   };
 
   return (
@@ -156,7 +318,6 @@ export default function ApplicationPage() {
                     <Label htmlFor="studentId">Student ID</Label>
                     <Input
                       id="studentId"
-                      placeholder="Enter your student ID"
                       value={formData.studentId}
                       readOnly
                       disabled
@@ -206,7 +367,8 @@ export default function ApplicationPage() {
                       type="tel"
                       placeholder="(123) 456-7890"
                       value={formData.phone}
-                      onChange={(e) => handleInputChange("phone", e.target.value)}
+                      onChange={handlePhoneChange}
+                      maxLength={14}
                     />
                   </div>
 
@@ -231,14 +393,39 @@ export default function ApplicationPage() {
                 <h3 className="text-lg font-semibold">Academic Information</h3>
 
                 <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
+                  <div className="space-y-2 relative">
                     <Label htmlFor="major">Major</Label>
                     <Input
                       id="major"
-                      placeholder="Computer Science"
-                      value={formData.major}
-                      onChange={(e) => handleInputChange("major", e.target.value)}
+                      placeholder="Type to search majors..."
+                      value={showMajorDropdown ? majorSearch : formData.major}
+                      onChange={(e) => {
+                        setMajorSearch(e.target.value);
+                        setShowMajorDropdown(true);
+                      }}
+                      onFocus={() => {
+                        setMajorSearch("");
+                        setShowMajorDropdown(true);
+                      }}
+                      autoComplete="off"
                     />
+                    {showMajorDropdown && filteredMajors.length > 0 && (
+                      <div className="major-dropdown absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                        {filteredMajors.map((major) => (
+                          <div
+                            key={major}
+                            className="px-4 py-2 hover:bg-gray-100 cursor-pointer text-sm"
+                            onClick={() => {
+                              setFormData({ ...formData, major });
+                              setMajorSearch("");
+                              setShowMajorDropdown(false);
+                            }}
+                          >
+                            {major}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   <div className="space-y-2">
@@ -255,20 +442,6 @@ export default function ApplicationPage() {
                       </SelectContent>
                     </Select>
                   </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="gpa">GPA (Optional)</Label>
-                  <Input
-                    id="gpa"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    max="4.00"
-                    placeholder="3.50"
-                    value={formData.gpa}
-                    onChange={(e) => handleInputChange("gpa", e.target.value)}
-                  />
                 </div>
               </div>
 

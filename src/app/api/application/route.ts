@@ -14,7 +14,6 @@ export async function POST(request: Request) {
       gender,
       major,
       year,
-      gpa,
       roomType,
       bedtime,
       noiseLevel,
@@ -30,6 +29,9 @@ export async function POST(request: Request) {
       )
     }
 
+    // Clean phone number (remove formatting for database storage)
+    const cleanPhone = phone.replace(/\D/g, '');
+
     // Insert into students table
     const { data: studentData, error: studentError } = await supabase
       .from('students')
@@ -38,11 +40,10 @@ export async function POST(request: Request) {
         first_name: firstName,
         last_name: lastName,
         email: email,
-        phone: phone,
+        phone: cleanPhone, // Store digits only
         gender: gender,
         year_level: year,
         major: major || null,
-        gpa: gpa ? parseFloat(gpa) : null,
       })
       .select()
 
