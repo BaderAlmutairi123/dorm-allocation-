@@ -78,7 +78,7 @@ export default function NavigationMenuApp() {
           <NavigationMenuTrigger>Dorm Application</NavigationMenuTrigger>
           <NavigationMenuContent>
             <ul className="grid gap-3 p-4 md:w-[400px]">
-              
+
               <li>
                 <NavigationMenuLink asChild>
                   <Link
@@ -141,5 +141,7 @@ export default function NavigationMenuApp() {
         </NavigationMenuItem>
       </NavigationMenuList>
     </NavigationMenu>
+    
   );
+
 }

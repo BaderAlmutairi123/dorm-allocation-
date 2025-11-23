@@ -269,301 +269,303 @@ export default function ApplicationPage() {
   };
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="max-w-4xl mx-auto">
-        <h1 className="text-3xl font-bold mb-2">Dorm Application</h1>
-        <p className="text-muted-foreground mb-8">
-          Complete your dorm application by filling out the information below.
-        </p>
-
-        {/* Application Status */}
-        <Card className="mb-8">
-          <CardHeader>
-            <CardTitle>Application Status</CardTitle>
-            <CardDescription>Track your application progress</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-4">
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
-                  <span className="font-medium">In Progress</span>
+    <div className="bg-blue-800 min-h-screen">
+      <div className="container mx-auto px-4 py-8">
+        <div className="max-w-4xl mx-auto">
+          {/* Dorm Application Header & Status */}
+          <Card className="mb-8 bg-white">
+            <CardHeader>
+              <CardTitle className="text-3xl">Dorm Application</CardTitle>
+              <CardDescription className="text-base">
+                Complete your dorm application by filling out the information below.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="border-t pt-6">
+                <h3 className="text-lg font-semibold mb-4">Application Status</h3>
+                <div className="flex items-center gap-4">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
+                      <span className="font-medium">In Progress</span>
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      Complete your application and submit before the deadline
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Deadline</p>
+                    <p className="font-semibold">March 31, 2025</p>
+                  </div>
                 </div>
-                <p className="text-sm text-muted-foreground">
-                  Complete your application and submit before the deadline
-                </p>
               </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Deadline</p>
-                <p className="font-semibold">March 31, 2025</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
 
-        {/* Application Form */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Application Form</CardTitle>
-            <CardDescription>Please provide accurate information</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-6">
-              {/* Personal Information */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold">Personal Information</h3>
+          {/* Application Form */}
+          <Card className="bg-white">
+            <CardHeader>
+              <CardTitle>Application Form</CardTitle>
+              <CardDescription>Please provide accurate information</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleSubmit} className="space-y-6">
+                {/* Personal Information */}
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold">Personal Information</h3>
 
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="studentId">Student ID</Label>
-                    <Input
-                      id="studentId"
-                      value={formData.studentId}
-                      readOnly
-                      disabled
-                      className="bg-gray-100 cursor-not-allowed"
-                    />
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="studentId">Student ID</Label>
+                      <Input
+                        id="studentId"
+                        value={formData.studentId}
+                        readOnly
+                        disabled
+                        className="bg-gray-100 cursor-not-allowed"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="email">Email</Label>
+                      <Input
+                        id="email"
+                        type="email"
+                        placeholder="student@university.edu"
+                        value={formData.email}
+                        onChange={(e) => handleInputChange("email", e.target.value)}
+                      />
+                    </div>
                   </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="email">Email</Label>
-                    <Input
-                      id="email"
-                      type="email"
-                      placeholder="student@university.edu"
-                      value={formData.email}
-                      onChange={(e) => handleInputChange("email", e.target.value)}
-                    />
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="firstName">First Name</Label>
+                      <Input
+                        id="firstName"
+                        placeholder="John"
+                        value={formData.firstName}
+                        onChange={(e) => handleInputChange("firstName", e.target.value)}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="lastName">Last Name</Label>
+                      <Input
+                        id="lastName"
+                        placeholder="Doe"
+                        value={formData.lastName}
+                        onChange={(e) => handleInputChange("lastName", e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="phone">Phone Number</Label>
+                      <Input
+                        id="phone"
+                        type="tel"
+                        placeholder="(123) 456-7890"
+                        value={formData.phone}
+                        onChange={handlePhoneChange}
+                        maxLength={14}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="gender">Gender</Label>
+                      <Select onValueChange={(value) => handleInputChange("gender", value)}>
+                        <SelectTrigger id="gender">
+                          <SelectValue placeholder="Select gender" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Male">Male</SelectItem>
+                          <SelectItem value="Female">Female</SelectItem>
+                          <SelectItem value="Other">Other</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
                 </div>
 
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="firstName">First Name</Label>
-                    <Input
-                      id="firstName"
-                      placeholder="John"
-                      value={formData.firstName}
-                      onChange={(e) => handleInputChange("firstName", e.target.value)}
-                    />
-                  </div>
+                {/* Academic Information */}
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold">Academic Information</h3>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="lastName">Last Name</Label>
-                    <Input
-                      id="lastName"
-                      placeholder="Doe"
-                      value={formData.lastName}
-                      onChange={(e) => handleInputChange("lastName", e.target.value)}
-                    />
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2 relative">
+                      <Label htmlFor="major">Major</Label>
+                      <Input
+                        id="major"
+                        placeholder="Type to search majors..."
+                        value={showMajorDropdown ? majorSearch : formData.major}
+                        onChange={(e) => {
+                          setMajorSearch(e.target.value);
+                          setShowMajorDropdown(true);
+                        }}
+                        onFocus={() => {
+                          setMajorSearch("");
+                          setShowMajorDropdown(true);
+                        }}
+                        autoComplete="off"
+                      />
+                      {showMajorDropdown && filteredMajors.length > 0 && (
+                        <div className="major-dropdown absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                          {filteredMajors.map((major) => (
+                            <div
+                              key={major}
+                              className="px-4 py-2 hover:bg-gray-100 cursor-pointer text-sm"
+                              onClick={() => {
+                                setFormData({ ...formData, major });
+                                setMajorSearch("");
+                                setShowMajorDropdown(false);
+                              }}
+                            >
+                              {major}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="year">Academic Year</Label>
+                      <Select onValueChange={(value) => handleInputChange("year", value)}>
+                        <SelectTrigger id="year">
+                          <SelectValue placeholder="Select year" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Freshman">Freshman</SelectItem>
+                          <SelectItem value="Sophomore">Sophomore</SelectItem>
+                          <SelectItem value="Junior">Junior</SelectItem>
+                          <SelectItem value="Senior">Senior</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
                 </div>
 
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="phone">Phone Number</Label>
-                    <Input
-                      id="phone"
-                      type="tel"
-                      placeholder="(123) 456-7890"
-                      value={formData.phone}
-                      onChange={handlePhoneChange}
-                      maxLength={14}
-                    />
-                  </div>
+                {/* Housing Preferences */}
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold">Housing Preferences</h3>
 
                   <div className="space-y-2">
-                    <Label htmlFor="gender">Gender</Label>
-                    <Select onValueChange={(value) => handleInputChange("gender", value)}>
-                      <SelectTrigger id="gender">
-                        <SelectValue placeholder="Select gender" />
+                    <Label htmlFor="roomType">Preferred Room Type</Label>
+                    <Select onValueChange={(value) => handleInputChange("roomType", value)}>
+                      <SelectTrigger id="roomType">
+                        <SelectValue placeholder="Select room type" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="Male">Male</SelectItem>
-                        <SelectItem value="Female">Female</SelectItem>
-                        <SelectItem value="Other">Other</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              </div>
-
-              {/* Academic Information */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold">Academic Information</h3>
-
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2 relative">
-                    <Label htmlFor="major">Major</Label>
-                    <Input
-                      id="major"
-                      placeholder="Type to search majors..."
-                      value={showMajorDropdown ? majorSearch : formData.major}
-                      onChange={(e) => {
-                        setMajorSearch(e.target.value);
-                        setShowMajorDropdown(true);
-                      }}
-                      onFocus={() => {
-                        setMajorSearch("");
-                        setShowMajorDropdown(true);
-                      }}
-                      autoComplete="off"
-                    />
-                    {showMajorDropdown && filteredMajors.length > 0 && (
-                      <div className="major-dropdown absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
-                        {filteredMajors.map((major) => (
-                          <div
-                            key={major}
-                            className="px-4 py-2 hover:bg-gray-100 cursor-pointer text-sm"
-                            onClick={() => {
-                              setFormData({ ...formData, major });
-                              setMajorSearch("");
-                              setShowMajorDropdown(false);
-                            }}
-                          >
-                            {major}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="year">Academic Year</Label>
-                    <Select onValueChange={(value) => handleInputChange("year", value)}>
-                      <SelectTrigger id="year">
-                        <SelectValue placeholder="Select year" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Freshman">Freshman</SelectItem>
-                        <SelectItem value="Sophomore">Sophomore</SelectItem>
-                        <SelectItem value="Junior">Junior</SelectItem>
-                        <SelectItem value="Senior">Senior</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              </div>
-
-              {/* Housing Preferences */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold">Housing Preferences</h3>
-
-                <div className="space-y-2">
-                  <Label htmlFor="roomType">Preferred Room Type</Label>
-                  <Select onValueChange={(value) => handleInputChange("roomType", value)}>
-                    <SelectTrigger id="roomType">
-                      <SelectValue placeholder="Select room type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Single">Single Room</SelectItem>
-                      <SelectItem value="Double">Double Room</SelectItem>
-                      <SelectItem value="Suite">Suite (3-4 people)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="bedtime">Bedtime Preference</Label>
-                    <Select onValueChange={(value) => handleInputChange("bedtime", value)}>
-                      <SelectTrigger id="bedtime">
-                        <SelectValue placeholder="Select preference" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Early Bird">Early Bird</SelectItem>
-                        <SelectItem value="Night Owl">Night Owl</SelectItem>
+                        <SelectItem value="Single">Single Room</SelectItem>
+                        <SelectItem value="Double">Double Room</SelectItem>
+                        <SelectItem value="Suite">Suite (3-4 people)</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
 
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="bedtime">Bedtime Preference</Label>
+                      <Select onValueChange={(value) => handleInputChange("bedtime", value)}>
+                        <SelectTrigger id="bedtime">
+                          <SelectValue placeholder="Select preference" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Early Bird">Early Bird</SelectItem>
+                          <SelectItem value="Night Owl">Night Owl</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="noiseLevel">Noise Level Tolerance (1-5)</Label>
+                      <Select onValueChange={(value) => handleInputChange("noiseLevel", value)}>
+                        <SelectTrigger id="noiseLevel">
+                          <SelectValue placeholder="1 = Quiet, 5 = Loud" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="1">1 - Very Quiet</SelectItem>
+                          <SelectItem value="2">2 - Quiet</SelectItem>
+                          <SelectItem value="3">3 - Moderate</SelectItem>
+                          <SelectItem value="4">4 - Loud</SelectItem>
+                          <SelectItem value="5">5 - Very Loud</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="cleanlinessLevel">Cleanliness Level (1-5)</Label>
+                      <Select onValueChange={(value) => handleInputChange("cleanlinessLevel", value)}>
+                        <SelectTrigger id="cleanlinessLevel">
+                          <SelectValue placeholder="1 = Messy, 5 = Very Clean" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="1">1 - Very Messy</SelectItem>
+                          <SelectItem value="2">2 - Somewhat Messy</SelectItem>
+                          <SelectItem value="3">3 - Moderate</SelectItem>
+                          <SelectItem value="4">4 - Clean</SelectItem>
+                          <SelectItem value="5">5 - Very Clean</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="guestPolicy">Guest Policy (0-4 days/week)</Label>
+                      <Select onValueChange={(value) => handleInputChange("guestPolicy", value)}>
+                        <SelectTrigger id="guestPolicy">
+                          <SelectValue placeholder="Select preference" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="0">0 - No Guests</SelectItem>
+                          <SelectItem value="1">1 - Rarely</SelectItem>
+                          <SelectItem value="2">2 - Sometimes</SelectItem>
+                          <SelectItem value="3">3 - Often</SelectItem>
+                          <SelectItem value="4">4 - Frequently</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
                   <div className="space-y-2">
-                    <Label htmlFor="noiseLevel">Noise Level Tolerance (1-5)</Label>
-                    <Select onValueChange={(value) => handleInputChange("noiseLevel", value)}>
-                      <SelectTrigger id="noiseLevel">
-                        <SelectValue placeholder="1 = Quiet, 5 = Loud" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="1">1 - Very Quiet</SelectItem>
-                        <SelectItem value="2">2 - Quiet</SelectItem>
-                        <SelectItem value="3">3 - Moderate</SelectItem>
-                        <SelectItem value="4">4 - Loud</SelectItem>
-                        <SelectItem value="5">5 - Very Loud</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <Label htmlFor="specialNeeds">Special Accommodations or Medical Needs (Optional)</Label>
+                    <Textarea
+                      id="specialNeeds"
+                      placeholder="Please describe any special accommodations or medical needs..."
+                      rows={4}
+                      value={formData.specialNeeds}
+                      onChange={(e) => handleInputChange("specialNeeds", e.target.value)}
+                    />
                   </div>
                 </div>
 
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="cleanlinessLevel">Cleanliness Level (1-5)</Label>
-                    <Select onValueChange={(value) => handleInputChange("cleanlinessLevel", value)}>
-                      <SelectTrigger id="cleanlinessLevel">
-                        <SelectValue placeholder="1 = Messy, 5 = Very Clean" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="1">1 - Very Messy</SelectItem>
-                        <SelectItem value="2">2 - Somewhat Messy</SelectItem>
-                        <SelectItem value="3">3 - Moderate</SelectItem>
-                        <SelectItem value="4">4 - Clean</SelectItem>
-                        <SelectItem value="5">5 - Very Clean</SelectItem>
-                      </SelectContent>
-                    </Select>
+                {/* Error and Success Messages */}
+                {error && (
+                  <div className="p-4 bg-red-50 border border-red-200 rounded-md">
+                    <p className="text-red-600 text-sm">{error}</p>
                   </div>
+                )}
 
-                  <div className="space-y-2">
-                    <Label htmlFor="guestPolicy">Guest Policy (0-4 days/week)</Label>
-                    <Select onValueChange={(value) => handleInputChange("guestPolicy", value)}>
-                      <SelectTrigger id="guestPolicy">
-                        <SelectValue placeholder="Select preference" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="0">0 - No Guests</SelectItem>
-                        <SelectItem value="1">1 - Rarely</SelectItem>
-                        <SelectItem value="2">2 - Sometimes</SelectItem>
-                        <SelectItem value="3">3 - Often</SelectItem>
-                        <SelectItem value="4">4 - Frequently</SelectItem>
-                      </SelectContent>
-                    </Select>
+                {success && (
+                  <div className="p-4 bg-green-50 border border-green-200 rounded-md">
+                    <p className="text-green-600 text-sm">
+                      Application submitted successfully! Redirecting to block selection...
+                    </p>
                   </div>
-                </div>
+                )}
 
-                <div className="space-y-2">
-                  <Label htmlFor="specialNeeds">Special Accommodations or Medical Needs (Optional)</Label>
-                  <Textarea
-                    id="specialNeeds"
-                    placeholder="Please describe any special accommodations or medical needs..."
-                    rows={4}
-                    value={formData.specialNeeds}
-                    onChange={(e) => handleInputChange("specialNeeds", e.target.value)}
-                  />
+                {/* Submit Button */}
+                <div>
+                  <Button type="submit" className="w-full bg-blue-800 hover:bg-blue-900" disabled={isLoading}>
+                    {isLoading ? 'Submitting...' : 'Submit Application'}
+                  </Button>
                 </div>
-              </div>
-
-              {/* Error and Success Messages */}
-              {error && (
-                <div className="p-4 bg-red-50 border border-red-200 rounded-md">
-                  <p className="text-red-600 text-sm">{error}</p>
-                </div>
-              )}
-
-              {success && (
-                <div className="p-4 bg-green-50 border border-green-200 rounded-md">
-                  <p className="text-green-600 text-sm">
-                    Application submitted successfully! Redirecting to block selection...
-                  </p>
-                </div>
-              )}
-
-              {/* Submit Button */}
-              <div>
-                <Button type="submit" className="w-full" disabled={isLoading}>
-                  {isLoading ? 'Submitting...' : 'Submit Application'}
-                </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </div>
   );
