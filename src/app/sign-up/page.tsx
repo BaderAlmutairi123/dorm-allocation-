@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { authClient } from '@/lib/supabase/auth'
+import { supabase } from '@/lib/supabase/client'
 import Link from 'next/link'
 
 export default function SignUpPage() {
@@ -13,6 +14,7 @@ export default function SignUpPage() {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
+  const [successMessage, setSuccessMessage] = useState('')
   const [validationErrors, setValidationErrors] = useState<{
     firstName?: string
     lastName?: string
@@ -67,6 +69,7 @@ export default function SignUpPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
+    setSuccessMessage('')
 
     // Validate form
     if (!validateForm()) {
@@ -76,21 +79,104 @@ export default function SignUpPage() {
     setIsLoading(true)
 
     try {
-      // Sign up using Supabase client-side auth
-      const data = await authClient.signUp(email, password, {
-        first_name: firstName.trim(),
-        last_name: lastName.trim(),
+      console.log('Attempting sign up with:', { email: email.trim(), firstName: firstName.trim(), lastName: lastName.trim() })
+
+      // FIRST: Check if email already exists in the database BEFORE creating auth user
+      const { data: existingStudent, error: checkError } = await supabase
+        .from('students')
+        .select('id, email')
+        .eq('email', email.trim())
+        .maybeSingle()
+
+      console.log('Email check result:', { existingStudent, checkError })
+
+      if (existingStudent) {
+        console.log('Email already registered in database')
+        setError('This email is already registered. Please log in or use a different email.')
+        setIsLoading(false)
+        return
+      }
+
+      // SECOND: Sign up using Supabase client-side auth
+      const { data, error: signUpError } = await supabase.auth.signUp({
         email: email.trim(),
+        password: password,
+        options: {
+          data: {
+            first_name: firstName.trim(),
+            last_name: lastName.trim(),
+            email: email.trim(),
+          }
+        }
       })
 
-      // Success - redirect to sign-in or application page
-      if (data?.user) {
-        router.push('/application')
-        router.refresh()
+      console.log('Sign up response:', { data, error: signUpError })
+
+      // Check for auth errors
+      if (signUpError) {
+        console.error('Sign up error:', signUpError)
+        setError(signUpError.message || 'Failed to create account. Please try again.')
+        setIsLoading(false)
+        return
       }
+
+      // Check if sign up was successful
+      if (!data?.user) {
+        console.warn('Sign up returned but no user data')
+        setError('Failed to create account. Please try again.')
+        setIsLoading(false)
+        return
+      }
+
+      // Check if this is a new user that needs email confirmation
+      if (data?.user && !data?.session) {
+        console.log('User created but needs email confirmation')
+        setSuccessMessage('Account created! Please check your email and click the verification link to complete registration.')
+        setIsLoading(false)
+        return
+      }
+
+      // Success - create student record in database
+      console.log('User created, inserting into students table...')
+
+      // Insert student record into the students table
+      const { error: insertError } = await supabase
+        .from('students')
+        .insert({
+          student_id: data.user.id,
+          email: email.trim(),
+          first_name: firstName.trim(),
+          last_name: lastName.trim(),
+          year_level: 1, // Default to freshman, can be updated in application
+        })
+
+      if (insertError) {
+        console.error('Error creating student profile:', insertError)
+        // Check if it's a duplicate key error (race condition - user was created between our check and now)
+        if (insertError.code === '23505') {
+          // Duplicate key - this email was registered during sign-up process
+          console.log('Race condition: Student profile already exists')
+          setError('This email is already registered. Please log in or use a different email.')
+          setIsLoading(false)
+          return
+        } else {
+          // Show the actual error to the user for debugging
+          console.error('Database insert failed:', insertError.message || insertError)
+          setError(`Failed to create student profile. Please try again or contact support.`)
+          setIsLoading(false)
+          return
+        }
+      } else {
+        console.log('Student profile created successfully')
+      }
+
+      // Redirect to application page
+      console.log('Redirecting to application page...')
+      router.push('/application')
+      router.refresh()
     } catch (err: any) {
+      console.error('Sign up error:', err)
       setError(err.message || 'An error occurred during sign up. Please try again.')
-    } finally {
       setIsLoading(false)
     }
   }
@@ -234,6 +320,12 @@ export default function SignUpPage() {
           {error && (
             <div className="text-red-600 text-sm text-center">
               {error}
+            </div>
+          )}
+
+          {successMessage && (
+            <div className="text-green-600 text-sm text-center font-medium">
+              {successMessage}
             </div>
           )}
 

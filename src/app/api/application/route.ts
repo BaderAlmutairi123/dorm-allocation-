@@ -32,26 +32,41 @@ export async function POST(request: Request) {
     // Clean phone number (remove formatting for database storage)
     const cleanPhone = phone.replace(/\D/g, '');
 
-    // Insert into students table
+    // Convert year level from text to number (Freshman = 1, Sophomore = 2, etc.)
+    const yearLevelMap: { [key: string]: number } = {
+      'Freshman': 1,
+      'Sophomore': 2,
+      'Junior': 3,
+      'Senior': 4,
+    }
+    const yearLevelNumber = yearLevelMap[year] || 1;
+
+    // Update existing student record (created during sign-up)
     const { data: studentData, error: studentError } = await supabase
       .from('students')
-      .insert({
-        student_id: studentId, // This should be the auth user ID
-        first_name: firstName,
-        last_name: lastName,
-        email: email,
-        phone: cleanPhone, // Store digits only
+      .update({
+        phone: cleanPhone,
         gender: gender,
-        year_level: year,
+        year_level: yearLevelNumber,
         major: major || null,
       })
+      .eq('student_id', studentId)
       .select()
 
     if (studentError) {
-      console.error('Error inserting student:', studentError)
+      console.error('Error updating student:', studentError)
       return NextResponse.json(
-        { error: 'Failed to create student record', details: studentError.message },
+        { error: 'Failed to update student record', details: studentError.message },
         { status: 500 }
+      )
+    }
+
+    // Check if update was successful (record exists)
+    if (!studentData || studentData.length === 0) {
+      console.error('Student record not found for ID:', studentId)
+      return NextResponse.json(
+        { error: 'Your account setup is incomplete. Please sign out and create a new account.' },
+        { status: 404 }
       )
     }
 

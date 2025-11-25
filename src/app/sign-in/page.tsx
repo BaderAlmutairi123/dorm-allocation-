@@ -19,17 +19,26 @@ export default function SignInPage() {
     setError('')
 
     try {
+      console.log('Attempting sign in with email:', email)
+
       // Sign in using Supabase client-side auth
       const data = await authClient.signIn(email, password)
 
+      console.log('Sign in response:', data)
+
       // Success - Supabase automatically handles session storage
       if (data?.user) {
+        console.log('Sign in successful, redirecting...')
         router.push('/application')
         router.refresh() // Refresh to update auth state
+      } else {
+        console.error('No user data returned from sign in')
+        setError('Sign in failed. Please check your credentials.')
+        setIsLoading(false)
       }
     } catch (err: any) {
+      console.error('Sign in error:', err)
       setError(err.message || 'An error occurred. Please try again.')
-    } finally {
       setIsLoading(false)
     }
   }
@@ -106,10 +115,7 @@ export default function SignInPage() {
             </button>
           </div>
 
-          <div className="text-center space-y-2">
-            <a href="#" className="block font-medium text-indigo-600 hover:text-indigo-500">
-              Forgot your password?
-            </a>
+          <div className="text-center">
             <p className="text-sm text-gray-600">
               Don't have an account?{' '}
               <Link href="/sign-up" className="font-medium text-indigo-600 hover:text-indigo-500">

@@ -1,21 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabaseServer } from '@/lib/supabase/server'
+import { supabase } from '@/lib/supabase/client'
 
 export async function POST(request: NextRequest) {
   try {
-    // Get the authorization header
-    const authHeader = request.headers.get('authorization')
-    const token = authHeader?.replace('Bearer ', '')
-
-    if (!token) {
-      return NextResponse.json(
-        { error: 'No authorization token provided' },
-        { status: 401 }
-      )
-    }
-
-    // Sign out user
-    const { error } = await supabaseServer.auth.signOut()
+    // Sign out using client-side Supabase (this handles the session properly)
+    const { error } = await supabase.auth.signOut()
 
     if (error) {
       return NextResponse.json(

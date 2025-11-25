@@ -11,10 +11,26 @@ import {
 } from "@/components/ui/navigation-menu";
 import { useEffect, useState } from "react";
 import { authClient } from "@/lib/supabase/auth";
+import { usePathname } from "next/navigation";
 
 export default function NavigationMenuApp() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userName, setUserName] = useState("");
+  const pathname = usePathname();
+
+  // Get current page name based on pathname
+  const getPageName = () => {
+    switch (pathname) {
+      case '/application':
+        return 'Dorm Application';
+      case '/blocks':
+        return 'Student Block';
+      case '/roommates':
+        return 'Potential Roommates';
+      default:
+        return 'Dorm Application';
+    }
+  };
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -75,7 +91,7 @@ export default function NavigationMenuApp() {
     <NavigationMenu>
       <NavigationMenuList>
         <NavigationMenuItem>
-          <NavigationMenuTrigger>Dorm Application</NavigationMenuTrigger>
+          <NavigationMenuTrigger>{getPageName()}</NavigationMenuTrigger>
           <NavigationMenuContent>
             <ul className="grid gap-3 p-4 md:w-[400px]">
 
@@ -87,7 +103,7 @@ export default function NavigationMenuApp() {
                     onClick={(e) => handleProtectedClick(e, '/application')}
                   >
                     <div className="font-medium">
-                      Dorm Application Process
+                      Dorm Application
                       {!isAuthenticated && <span className="text-xs text-red-500 ml-2">🔒</span>}
                     </div>
                     <p className="text-sm text-muted-foreground">

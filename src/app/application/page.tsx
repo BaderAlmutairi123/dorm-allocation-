@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useState, useEffect } from "react";
 import { authClient } from "@/lib/supabase/auth";
+import { supabase } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 
 // Hofstra University Majors
@@ -133,6 +134,7 @@ export default function ApplicationPage() {
   const [success, setSuccess] = useState(false);
   const [majorSearch, setMajorSearch] = useState("");
   const [showMajorDropdown, setShowMajorDropdown] = useState(false);
+  const [isSubmitted, setIsSubmitted] = useState(false);
   const [formData, setFormData] = useState({
     studentId: "",
     firstName: "",
@@ -147,13 +149,18 @@ export default function ApplicationPage() {
     noiseLevel: "",
     cleanlinessLevel: "",
     guestPolicy: "",
-    specialNeeds: "",
   });
 
   // Filter majors based on search
   const filteredMajors = HOFSTRA_MAJORS.filter(major =>
     major.toLowerCase().includes(majorSearch.toLowerCase())
   );
+
+  // Helper function to capitalize first letter
+  const capitalizeFirstLetter = (str: string) => {
+    if (!str) return ''
+    return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase()
+  }
 
   // Load user data from auth on mount
   useEffect(() => {
@@ -170,13 +177,87 @@ export default function ApplicationPage() {
         // Get user data
         const user = await authClient.getUser();
         if (user) {
-          setFormData(prev => ({
-            ...prev,
-            studentId: user.id,
-            email: user.email || "",
-            firstName: user.user_metadata?.first_name || "",
-            lastName: user.user_metadata?.last_name || "",
-          }));
+          // First, try to get data from user metadata
+          let firstName = user.user_metadata?.first_name || "";
+          let lastName = user.user_metadata?.last_name || "";
+
+          // Fetch full student data from students table
+          const { data: studentData, error: studentError } = await supabase
+            .from('students')
+            .select('first_name, last_name, phone, gender, year_level, major')
+            .eq('student_id', user.id)
+            .single();
+
+          if (!studentError && studentData) {
+            firstName = studentData.first_name || firstName;
+            lastName = studentData.last_name || lastName;
+
+            // Capitalize first letter of names
+            firstName = capitalizeFirstLetter(firstName);
+            lastName = capitalizeFirstLetter(lastName);
+
+            // Check if student has already submitted preferences
+            const { data: preferencesData, error: preferencesError } = await supabase
+              .from('student_preferences')
+              .select('*')
+              .eq('student_id', user.id)
+              .single();
+
+            if (!preferencesError && preferencesData) {
+              // Student has already submitted - load their data and set as submitted
+              setIsSubmitted(true);
+
+              // Convert year_level number back to text for display
+              const yearLevelText: { [key: number]: string } = {
+                1: 'Freshman',
+                2: 'Sophomore',
+                3: 'Junior',
+                4: 'Senior',
+              };
+
+              setFormData({
+                studentId: user.id,
+                email: user.email || "",
+                firstName: firstName,
+                lastName: lastName,
+                phone: studentData.phone ? `(${studentData.phone.slice(0, 3)}) ${studentData.phone.slice(3, 6)}-${studentData.phone.slice(6)}` : "",
+                gender: studentData.gender || "",
+                major: studentData.major || "",
+                year: yearLevelText[studentData.year_level] || "",
+                roomType: preferencesData.preferred_room_type || "",
+                bedtime: preferencesData.bedtime || "",
+                noiseLevel: preferencesData.noise_level?.toString() || "",
+                cleanlinessLevel: preferencesData.cleanliness_level?.toString() || "",
+                guestPolicy: preferencesData.guest_policy_preference?.toString() || "",
+              });
+            } else {
+              // Student hasn't submitted yet - just set basic info
+              // Capitalize first letter of names
+              const capitalizedFirstName = capitalizeFirstLetter(firstName);
+              const capitalizedLastName = capitalizeFirstLetter(lastName);
+
+              setFormData(prev => ({
+                ...prev,
+                studentId: user.id,
+                email: user.email || "",
+                firstName: capitalizedFirstName,
+                lastName: capitalizedLastName,
+              }));
+            }
+          } else {
+            // No student data found, just set basic info from auth
+            // Capitalize first letter of names
+            const capitalizedFirstName = capitalizeFirstLetter(firstName);
+            const capitalizedLastName = capitalizeFirstLetter(lastName);
+
+            setFormData(prev => ({
+              ...prev,
+              studentId: user.id,
+              email: user.email || "",
+              firstName: capitalizedFirstName,
+              lastName: capitalizedLastName,
+            }));
+          }
         } else {
           // No user logged in, redirect to sign-in
           router.push('/sign-in');
@@ -215,6 +296,7 @@ export default function ApplicationPage() {
     setError("");
 
     try {
+      // Submit the application directly
       const response = await fetch('/api/application', {
         method: 'POST',
         headers: {
@@ -230,10 +312,8 @@ export default function ApplicationPage() {
       }
 
       setSuccess(true);
-      // Redirect to success page or dashboard after 2 seconds
-      setTimeout(() => {
-        router.push('/blocks');
-      }, 2000);
+      setIsSubmitted(true);
+      // Stay on the same page - form will be grayed out automatically
 
     } catch (err: any) {
       setError(err.message || 'An error occurred. Please try again.');
@@ -285,17 +365,27 @@ export default function ApplicationPage() {
                 <h3 className="text-lg font-semibold mb-4">Application Status</h3>
                 <div className="flex items-center gap-4">
                   <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-2">
-                      <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
-                      <span className="font-medium">In Progress</span>
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      Complete your application and submit before the deadline
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Deadline</p>
-                    <p className="font-semibold">March 31, 2025</p>
+                    {isSubmitted ? (
+                      <>
+                        <div className="flex items-center gap-2 mb-2">
+                          <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                          <span className="font-medium text-green-700">Completed</span>
+                        </div>
+                        <p className="text-sm text-muted-foreground">
+                          Your application has been submitted successfully
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <div className="flex items-center gap-2 mb-2">
+                          <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
+                          <span className="font-medium text-yellow-700">In Progress</span>
+                        </div>
+                        <p className="text-sm text-muted-foreground">
+                          Complete your application and submit your preferences
+                        </p>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
@@ -333,7 +423,9 @@ export default function ApplicationPage() {
                         type="email"
                         placeholder="student@university.edu"
                         value={formData.email}
-                        onChange={(e) => handleInputChange("email", e.target.value)}
+                        readOnly
+                        disabled
+                        className="bg-gray-100 cursor-not-allowed"
                       />
                     </div>
                   </div>
@@ -345,7 +437,9 @@ export default function ApplicationPage() {
                         id="firstName"
                         placeholder="John"
                         value={formData.firstName}
-                        onChange={(e) => handleInputChange("firstName", e.target.value)}
+                        readOnly
+                        disabled
+                        className="bg-gray-100 cursor-not-allowed"
                       />
                     </div>
 
@@ -355,7 +449,9 @@ export default function ApplicationPage() {
                         id="lastName"
                         placeholder="Doe"
                         value={formData.lastName}
-                        onChange={(e) => handleInputChange("lastName", e.target.value)}
+                        readOnly
+                        disabled
+                        className="bg-gray-100 cursor-not-allowed"
                       />
                     </div>
                   </div>
@@ -370,13 +466,19 @@ export default function ApplicationPage() {
                         value={formData.phone}
                         onChange={handlePhoneChange}
                         maxLength={14}
+                        disabled={isSubmitted}
+                        className={isSubmitted ? "bg-gray-100 cursor-not-allowed" : ""}
                       />
                     </div>
 
                     <div className="space-y-2">
                       <Label htmlFor="gender">Gender</Label>
-                      <Select onValueChange={(value) => handleInputChange("gender", value)}>
-                        <SelectTrigger id="gender">
+                      <Select
+                        onValueChange={(value) => handleInputChange("gender", value)}
+                        value={formData.gender}
+                        disabled={isSubmitted}
+                      >
+                        <SelectTrigger id="gender" className={isSubmitted ? "bg-gray-100 cursor-not-allowed" : ""}>
                           <SelectValue placeholder="Select gender" />
                         </SelectTrigger>
                         <SelectContent>
@@ -405,12 +507,16 @@ export default function ApplicationPage() {
                           setShowMajorDropdown(true);
                         }}
                         onFocus={() => {
-                          setMajorSearch("");
-                          setShowMajorDropdown(true);
+                          if (!isSubmitted) {
+                            setMajorSearch("");
+                            setShowMajorDropdown(true);
+                          }
                         }}
                         autoComplete="off"
+                        disabled={isSubmitted}
+                        className={isSubmitted ? "bg-gray-100 cursor-not-allowed" : ""}
                       />
-                      {showMajorDropdown && filteredMajors.length > 0 && (
+                      {showMajorDropdown && filteredMajors.length > 0 && !isSubmitted && (
                         <div className="major-dropdown absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
                           {filteredMajors.map((major) => (
                             <div
@@ -431,8 +537,12 @@ export default function ApplicationPage() {
 
                     <div className="space-y-2">
                       <Label htmlFor="year">Academic Year</Label>
-                      <Select onValueChange={(value) => handleInputChange("year", value)}>
-                        <SelectTrigger id="year">
+                      <Select
+                        onValueChange={(value) => handleInputChange("year", value)}
+                        value={formData.year}
+                        disabled={isSubmitted}
+                      >
+                        <SelectTrigger id="year" className={isSubmitted ? "bg-gray-100 cursor-not-allowed" : ""}>
                           <SelectValue placeholder="Select year" />
                         </SelectTrigger>
                         <SelectContent>
@@ -452,8 +562,12 @@ export default function ApplicationPage() {
 
                   <div className="space-y-2">
                     <Label htmlFor="roomType">Preferred Room Type</Label>
-                    <Select onValueChange={(value) => handleInputChange("roomType", value)}>
-                      <SelectTrigger id="roomType">
+                    <Select
+                      onValueChange={(value) => handleInputChange("roomType", value)}
+                      value={formData.roomType}
+                      disabled={isSubmitted}
+                    >
+                      <SelectTrigger id="roomType" className={isSubmitted ? "bg-gray-100 cursor-not-allowed" : ""}>
                         <SelectValue placeholder="Select room type" />
                       </SelectTrigger>
                       <SelectContent>
@@ -467,8 +581,12 @@ export default function ApplicationPage() {
                   <div className="grid gap-4 md:grid-cols-2">
                     <div className="space-y-2">
                       <Label htmlFor="bedtime">Bedtime Preference</Label>
-                      <Select onValueChange={(value) => handleInputChange("bedtime", value)}>
-                        <SelectTrigger id="bedtime">
+                      <Select
+                        onValueChange={(value) => handleInputChange("bedtime", value)}
+                        value={formData.bedtime}
+                        disabled={isSubmitted}
+                      >
+                        <SelectTrigger id="bedtime" className={isSubmitted ? "bg-gray-100 cursor-not-allowed" : ""}>
                           <SelectValue placeholder="Select preference" />
                         </SelectTrigger>
                         <SelectContent>
@@ -480,8 +598,12 @@ export default function ApplicationPage() {
 
                     <div className="space-y-2">
                       <Label htmlFor="noiseLevel">Noise Level Tolerance (1-5)</Label>
-                      <Select onValueChange={(value) => handleInputChange("noiseLevel", value)}>
-                        <SelectTrigger id="noiseLevel">
+                      <Select
+                        onValueChange={(value) => handleInputChange("noiseLevel", value)}
+                        value={formData.noiseLevel}
+                        disabled={isSubmitted}
+                      >
+                        <SelectTrigger id="noiseLevel" className={isSubmitted ? "bg-gray-100 cursor-not-allowed" : ""}>
                           <SelectValue placeholder="1 = Quiet, 5 = Loud" />
                         </SelectTrigger>
                         <SelectContent>
@@ -498,8 +620,12 @@ export default function ApplicationPage() {
                   <div className="grid gap-4 md:grid-cols-2">
                     <div className="space-y-2">
                       <Label htmlFor="cleanlinessLevel">Cleanliness Level (1-5)</Label>
-                      <Select onValueChange={(value) => handleInputChange("cleanlinessLevel", value)}>
-                        <SelectTrigger id="cleanlinessLevel">
+                      <Select
+                        onValueChange={(value) => handleInputChange("cleanlinessLevel", value)}
+                        value={formData.cleanlinessLevel}
+                        disabled={isSubmitted}
+                      >
+                        <SelectTrigger id="cleanlinessLevel" className={isSubmitted ? "bg-gray-100 cursor-not-allowed" : ""}>
                           <SelectValue placeholder="1 = Messy, 5 = Very Clean" />
                         </SelectTrigger>
                         <SelectContent>
@@ -514,8 +640,12 @@ export default function ApplicationPage() {
 
                     <div className="space-y-2">
                       <Label htmlFor="guestPolicy">Guest Policy (0-4 days/week)</Label>
-                      <Select onValueChange={(value) => handleInputChange("guestPolicy", value)}>
-                        <SelectTrigger id="guestPolicy">
+                      <Select
+                        onValueChange={(value) => handleInputChange("guestPolicy", value)}
+                        value={formData.guestPolicy}
+                        disabled={isSubmitted}
+                      >
+                        <SelectTrigger id="guestPolicy" className={isSubmitted ? "bg-gray-100 cursor-not-allowed" : ""}>
                           <SelectValue placeholder="Select preference" />
                         </SelectTrigger>
                         <SelectContent>
@@ -529,16 +659,6 @@ export default function ApplicationPage() {
                     </div>
                   </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="specialNeeds">Special Accommodations or Medical Needs (Optional)</Label>
-                    <Textarea
-                      id="specialNeeds"
-                      placeholder="Please describe any special accommodations or medical needs..."
-                      rows={4}
-                      value={formData.specialNeeds}
-                      onChange={(e) => handleInputChange("specialNeeds", e.target.value)}
-                    />
-                  </div>
                 </div>
 
                 {/* Error and Success Messages */}
@@ -548,18 +668,22 @@ export default function ApplicationPage() {
                   </div>
                 )}
 
-                {success && (
-                  <div className="p-4 bg-green-50 border border-green-200 rounded-md">
-                    <p className="text-green-600 text-sm">
-                      Application submitted successfully! Redirecting to block selection...
+                {isSubmitted && (
+                  <div className="p-4 bg-blue-50 border border-blue-200 rounded-md">
+                    <p className="text-blue-600 text-sm font-medium">
+                      ✓ Your application has been submitted. Your preferences are shown above.
                     </p>
                   </div>
                 )}
 
                 {/* Submit Button */}
                 <div>
-                  <Button type="submit" className="w-full bg-blue-800 hover:bg-blue-900" disabled={isLoading}>
-                    {isLoading ? 'Submitting...' : 'Submit Application'}
+                  <Button
+                    type="submit"
+                    className="w-full bg-blue-800 hover:bg-blue-900"
+                    disabled={isLoading || isSubmitted}
+                  >
+                    {isSubmitted ? 'Application Already Submitted' : (isLoading ? 'Submitting...' : 'Submit Application')}
                   </Button>
                 </div>
               </form>
