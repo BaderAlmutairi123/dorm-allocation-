@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { authClient } from '@/lib/supabase/auth'
 import Link from 'next/link'
+import { Card, CardContent } from '@/components/ui/card'
 
 export default function SignUpPage() {
   const [firstName, setFirstName] = useState('')
@@ -96,14 +97,16 @@ export default function SignUpPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8">
-        <div>
-          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-            Create your account
-          </h2>
-        </div>
-        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
+    <div className="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8" style={{ backgroundColor: '#2D3BA6' }}>
+      <div className="max-w-md w-full">
+        <Card className="bg-white shadow-xl">
+          <CardContent className="p-8 space-y-8">
+            <div>
+              <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
+                Create your account
+              </h2>
+            </div>
+            <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
           <div className="rounded-md shadow-sm -space-y-px">
             {/* First Name */}
             <div>
@@ -256,6 +259,8 @@ export default function SignUpPage() {
             </p>
           </div>
         </form>
+          </CardContent>
+        </Card>
       </div>
     </div>
   )

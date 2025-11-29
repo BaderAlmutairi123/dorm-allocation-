@@ -117,25 +117,7 @@ export default function NavigationMenuApp() {
                   </Link>
                 </NavigationMenuLink>
               </li>
-              <li>
-                <NavigationMenuLink asChild>
-                  <Link
-                    href="/roommates"
-                    className="block rounded-md p-2 hover:bg-accent"
-                    onClick={(e) => handleProtectedClick(e, '/roommates')}
-                  >
-                    <div className="font-medium">
-                      Potential Roommates
-                      {!isAuthenticated && <span className="text-xs text-red-500 ml-2">🔒</span>}
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      {isAuthenticated
-                        ? "Find and match with compatible roommates."
-                        : "Sign in required - Click to go to sign in page"}
-                    </p>
-                  </Link>
-                </NavigationMenuLink>
-              </li>
+            
             </ul>
           </NavigationMenuContent>
         </NavigationMenuItem>
