@@ -27,42 +27,55 @@ export async function GET(request: Request) {
       )
     }
 
-    // Get both students
+    // Get both students - your schema uses student_uuid
     const { data: students, error: studentsError } = await supabaseAdmin
       .from('students')
       .select('*')
-      .in('student_id', [student1Id, student2Id])
+      .in('student_uuid', [student1Id, student2Id])
 
-    if (studentsError) {
-      // Try with 'id' if 'student_id' fails
-      const { data: studentsAlt, error: altError } = await supabaseAdmin
+    let studentsData = students
+    if (studentsError || !students || students.length !== 2) {
+      // Try with 'student_id' for compatibility
+      const { data: studentsAlt1, error: altError1 } = await supabaseAdmin
         .from('students')
         .select('*')
-        .in('id', [student1Id, student2Id])
+        .in('student_id', [student1Id, student2Id])
 
-      if (altError || !studentsAlt || studentsAlt.length !== 2) {
-        return NextResponse.json(
-          { error: `Failed to fetch students: ${studentsError.message || altError?.message}` },
-          { status: 500 }
-        )
+      if (altError1 || !studentsAlt1 || studentsAlt1.length !== 2) {
+        // Try with 'id' as last resort
+        const { data: studentsAlt2, error: altError2 } = await supabaseAdmin
+          .from('students')
+          .select('*')
+          .in('id', [student1Id, student2Id])
+
+        if (altError2 || !studentsAlt2 || studentsAlt2.length !== 2) {
+          return NextResponse.json(
+            { error: `Failed to fetch students: ${studentsError?.message || altError1?.message || altError2?.message}` },
+            { status: 500 }
+          )
+        }
+
+        studentsData = studentsAlt2.map(s => ({
+          ...s,
+          student_uuid: s.student_uuid || s.student_id || s.id,
+        }))
+      } else {
+        studentsData = studentsAlt1.map(s => ({
+          ...s,
+          student_uuid: s.student_uuid || s.student_id || s.id,
+        }))
       }
-
-      // Map to student_id format
-      students = studentsAlt.map(s => ({
-        ...s,
-        student_id: s.student_id || s.id,
-      }))
     }
 
-    if (!students || students.length !== 2) {
+    if (!studentsData || studentsData.length !== 2) {
       return NextResponse.json(
         { error: 'Could not find both students' },
         { status: 404 }
       )
     }
 
-    const student1 = students.find(s => (s.student_id || s.id) === student1Id)
-    const student2 = students.find(s => (s.student_id || s.id) === student2Id)
+    const student1 = studentsData.find(s => (s.student_uuid || s.student_id || s.id) === student1Id)
+    const student2 = studentsData.find(s => (s.student_uuid || s.student_id || s.id) === student2Id)
 
     if (!student1 || !student2) {
       return NextResponse.json(
@@ -71,11 +84,14 @@ export async function GET(request: Request) {
       )
     }
 
-    // Get preferences
+    const student1Uuid = student1.student_uuid || student1.student_id || student1.id
+    const student2Uuid = student2.student_uuid || student2.student_id || student2.id
+
+    // Get preferences - your schema uses student_uuid
     const { data: preferences, error: prefError } = await supabaseAdmin
       .from('student_preferences')
       .select('*')
-      .in('student_id', [student1Id, student2Id])
+      .in('student_uuid', [student1Uuid, student2Uuid])
 
     if (prefError) {
       console.warn('Failed to fetch preferences:', prefError.message)
@@ -83,25 +99,25 @@ export async function GET(request: Request) {
 
     // Combine students with preferences
     const student1WithPrefs = {
-      student_id: student1.student_id || student1.id,
+      student_id: student1Uuid,
       first_name: student1.first_name,
       last_name: student1.last_name,
       email: student1.email,
       gender: student1.gender,
       year_level: student1.year_level,
       major: student1.major,
-      preferences: preferences?.find(p => p.student_id === (student1.student_id || student1.id)) || null,
+      preferences: preferences?.find(p => (p.student_uuid || p.student_id) === student1Uuid) || null,
     }
 
     const student2WithPrefs = {
-      student_id: student2.student_id || student2.id,
+      student_id: student2Uuid,
       first_name: student2.first_name,
       last_name: student2.last_name,
       email: student2.email,
       gender: student2.gender,
       year_level: student2.year_level,
       major: student2.major,
-      preferences: preferences?.find(p => p.student_id === (student2.student_id || student2.id)) || null,
+      preferences: preferences?.find(p => (p.student_uuid || p.student_id) === student2Uuid) || null,
     }
 
     const compatibility = calculateCompatibility(student1WithPrefs, student2WithPrefs)

@@ -215,10 +215,15 @@ export default function ApplicationPage() {
     setError("");
 
     try {
+      // Get the auth token from Supabase session
+      const session = await authClient.getSession();
+      const token = session?.access_token;
+
       const response = await fetch('/api/application', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...(token && { 'Authorization': `Bearer ${token}` }),
         },
         body: JSON.stringify(formData),
       });

@@ -36,6 +36,8 @@ export interface Room {
   room_type: string
   floor: number | null
   is_available: boolean
+  dorm_id?: number
+  current_occupancy?: number
 }
 
 export interface CompatibilityScore {
@@ -151,48 +153,67 @@ async function getPendingStudents(): Promise<StudentWithPreferences[]> {
   }
 
   // Get all students with pending room assignments
-  const { data: assignments, error: assignError } = await supabaseAdmin
+  // Try both student_id and student_uuid field names
+  let assignments: any[] | null = null
+  let assignError: any = null
+
+  const { data: assignments1, error: error1 } = await supabaseAdmin
     .from('room_assignments')
-    .select('student_id')
+    .select('*')
     .eq('status', 'Pending')
 
-  if (assignError) {
-    throw new Error(`Failed to fetch pending assignments: ${assignError.message}`)
+  if (error1) {
+    assignError = error1
+  } else {
+    assignments = assignments1
   }
 
-  if (!assignments || assignments.length === 0) {
+  if (assignError || !assignments || assignments.length === 0) {
     return []
   }
 
+  // Extract student IDs - try both field names
   const studentIds = assignments
-    .map(a => a.student_id)
+    .map(a => a.student_uuid || a.student_id)
     .filter((id): id is string => id !== null && id !== undefined)
 
-  // Get student data
-  // The schema uses 'student_id' as the primary key (matching application route)
+  // Get student data - your schema uses 'student_uuid' as primary key
   const { data: students, error: studentsError } = await supabaseAdmin
     .from('students')
     .select('*')
-    .in('student_id', studentIds)
+    .in('student_uuid', studentIds)
 
-  // If that fails, try with 'id' (some schemas might use id)
+  // If that fails, try with 'student_id' or 'id' (for compatibility)
   let studentsData = students
   if (studentsError || !students || students.length === 0) {
-    const { data: altStudents, error: altError } = await supabaseAdmin
+    const { data: altStudents1, error: altError1 } = await supabaseAdmin
       .from('students')
       .select('*')
-      .in('id', studentIds)
+      .in('student_id', studentIds)
 
-    if (altError) {
-      throw new Error(`Failed to fetch students: ${studentsError?.message || altError.message}`)
-    }
+    if (altError1) {
+      const { data: altStudents2, error: altError2 } = await supabaseAdmin
+        .from('students')
+        .select('*')
+        .in('id', studentIds)
 
-    if (altStudents && altStudents.length > 0) {
-      // Map id to student_id for consistency
-      studentsData = altStudents.map(s => ({
-        ...s,
-        student_id: s.student_id || s.id,
-      }))
+      if (altError2) {
+        throw new Error(`Failed to fetch students: ${studentsError?.message || altError1?.message || altError2.message}`)
+      }
+
+      if (altStudents2 && altStudents2.length > 0) {
+        studentsData = altStudents2.map(s => ({
+          ...s,
+          student_uuid: s.student_uuid || s.student_id || s.id,
+        }))
+      }
+    } else {
+      if (altStudents1 && altStudents1.length > 0) {
+        studentsData = altStudents1.map(s => ({
+          ...s,
+          student_uuid: s.student_uuid || s.student_id || s.id,
+        }))
+      }
     }
   }
 
@@ -200,19 +221,35 @@ async function getPendingStudents(): Promise<StudentWithPreferences[]> {
     return []
   }
 
-  // Get preferences for all students
+  // Get preferences for all students - your schema uses student_uuid
   const { data: preferences, error: prefError } = await supabaseAdmin
     .from('student_preferences')
     .select('*')
-    .in('student_id', studentIds)
+    .in('student_uuid', studentIds)
 
+  let preferencesData = preferences
   if (prefError) {
-    console.warn(`Failed to fetch preferences: ${prefError.message}`)
+    // Try with student_id for compatibility
+    const { data: prefAlt, error: prefAltError } = await supabaseAdmin
+      .from('student_preferences')
+      .select('*')
+      .in('student_id', studentIds)
+
+    if (!prefAltError && prefAlt) {
+      preferencesData = prefAlt
+    } else {
+      console.warn(`Failed to fetch preferences: ${prefError.message}`)
+    }
   }
 
   // Combine students with their preferences
   return studentsData.map(student => {
-    const studentId = student.student_id || student.id
+    // Your schema uses student_uuid as the primary key
+    const studentId = student.student_uuid || student.student_id || student.id
+    const studentPref = preferencesData?.find(p => 
+      (p.student_uuid === studentId) || (p.student_id === studentId)
+    ) || null
+    
     return {
       student_id: studentId,
       first_name: student.first_name,
@@ -221,57 +258,92 @@ async function getPendingStudents(): Promise<StudentWithPreferences[]> {
       gender: student.gender,
       year_level: student.year_level,
       major: student.major,
-      preferences: preferences?.find(p => p.student_id === studentId) || null,
+      preferences: studentPref,
     }
   })
 }
 
 /**
  * Get all available rooms
+ * Rooms are available if current_occupancy < max_capacity
  */
 async function getAvailableRooms(): Promise<Room[]> {
   if (!supabaseAdmin) {
     throw new Error('Admin client not available')
   }
 
+  // Get all rooms and filter by availability (current_occupancy < max_capacity)
   const { data: rooms, error } = await supabaseAdmin
     .from('rooms')
     .select('*')
-    .eq('is_available', true)
-    .order('building_name')
+    .order('dorm_id')
     .order('room_number')
 
   if (error) {
     throw new Error(`Failed to fetch rooms: ${error.message}`)
   }
 
-  return rooms || []
+  if (!rooms) {
+    return []
+  }
+
+  // Filter rooms where current_occupancy < max_capacity
+  return rooms
+    .filter(room => (room.current_occupancy || 0) < (room.max_capacity || 0))
+    .map(room => ({
+      id: String(room.id), // Convert to string for consistency
+      building_name: room.dorm_id ? `Dorm ${room.dorm_id}` : 'Unknown', // Use dorm_id as building reference
+      room_number: room.room_number,
+      capacity: room.max_capacity,
+      room_type: room.room_type?.toLowerCase() || 'double', // Normalize to lowercase
+      floor: room.floor_number,
+      is_available: true, // All returned rooms are available
+      dorm_id: room.dorm_id, // Store dorm_id for reference
+      current_occupancy: room.current_occupancy || 0,
+    }))
 }
 
 /**
- * Get current room occupancy
+ * Get current room occupancy from confirmed assignments
+ * Also includes current_occupancy from rooms table for accuracy
  */
 async function getRoomOccupancy(): Promise<Map<string, number>> {
   if (!supabaseAdmin) {
     throw new Error('Admin client not available')
   }
 
-  const { data: assignments, error } = await supabaseAdmin
+  const occupancy = new Map<string, number>()
+
+  // Get confirmed assignments
+  const { data: assignments, error: assignError } = await supabaseAdmin
     .from('room_assignments')
     .select('room_id')
-    .eq('status', 'Assigned')
+    .eq('status', 'Confirmed')
     .not('room_id', 'is', null)
 
-  if (error) {
-    throw new Error(`Failed to fetch room occupancy: ${error.message}`)
-  }
-
-  const occupancy = new Map<string, number>()
-  if (assignments) {
+  if (assignError) {
+    console.warn(`Failed to fetch assignments for occupancy: ${assignError.message}`)
+  } else if (assignments) {
     assignments.forEach(assignment => {
       if (assignment.room_id) {
-        occupancy.set(assignment.room_id, (occupancy.get(assignment.room_id) || 0) + 1)
+        const roomId = String(assignment.room_id)
+        occupancy.set(roomId, (occupancy.get(roomId) || 0) + 1)
       }
+    })
+  }
+
+  // Also get current_occupancy from rooms table (more accurate)
+  const { data: rooms, error: roomsError } = await supabaseAdmin
+    .from('rooms')
+    .select('id, current_occupancy')
+
+  if (!roomsError && rooms) {
+    rooms.forEach(room => {
+      const roomId = String(room.id)
+      const roomOccupancy = room.current_occupancy || 0
+      // Use the higher value (assignments count or room's current_occupancy)
+      const existing = occupancy.get(roomId) || 0
+      occupancy.set(roomId, Math.max(existing, roomOccupancy))
     })
   }
 
@@ -288,29 +360,46 @@ async function getBlocks(): Promise<Map<string, string[]>> {
   }
 
   try {
-    // Get all blocks
-    const { data: blocks, error: blocksError } = await supabaseAdmin
-      .from('blocks')
-      .select('id')
+    // Try both 'blocks' and 'student_blocks' table names
+    let blocks: any[] | null = null
+    let blocksError: any = null
 
-    if (blocksError) {
-      // Table might not exist, return empty map
-      console.warn('Blocks table not available:', blocksError.message)
+    const { data: blocks1, error: error1 } = await supabaseAdmin
+      .from('student_blocks')
+      .select('*')
+
+    if (error1) {
+      // Try 'blocks' table
+      const { data: blocks2, error: error2 } = await supabaseAdmin
+        .from('blocks')
+        .select('*')
+
+      if (error2) {
+        blocksError = error2
+      } else {
+        blocks = blocks2
+      }
+    } else {
+      blocks = blocks1
+    }
+
+    if (blocksError || !blocks || blocks.length === 0) {
       return new Map()
     }
 
-    if (!blocks || blocks.length === 0) {
-      return new Map()
-    }
+    // Get block IDs - try both 'id' and 'block_id' field names
+    const blockIds = blocks
+      .map(b => b.block_id || b.id)
+      .filter((id): id is number | string => id !== null && id !== undefined)
 
-    const blockIds = blocks.map(b => b.id)
-
-    // Get block members
+    // Get block members - your schema has no status column, just get all members
     const { data: members, error: membersError } = await supabaseAdmin
       .from('block_members')
-      .select('block_id, student_id')
+      .select('*')
       .in('block_id', blockIds)
-      .eq('status', 'accepted')
+    
+    // No status filtering needed - your schema doesn't have a status column
+    const filteredMembers = members
 
     if (membersError) {
       console.warn('Block members table not available:', membersError.message)
@@ -318,11 +407,15 @@ async function getBlocks(): Promise<Map<string, string[]>> {
     }
 
     const blockMap = new Map<string, string[]>()
-    if (members) {
-      members.forEach(member => {
-        const existing = blockMap.get(member.block_id) || []
-        existing.push(member.student_id)
-        blockMap.set(member.block_id, existing)
+    if (filteredMembers) {
+      filteredMembers.forEach(member => {
+        const blockId = String(member.block_id || member.id)
+        const studentId = member.student_uuid || member.student_id
+        if (studentId) {
+          const existing = blockMap.get(blockId) || []
+          existing.push(studentId)
+          blockMap.set(blockId, existing)
+        }
       })
     }
 
@@ -406,8 +499,8 @@ export async function runMatchingAlgorithm(): Promise<{
       
       // Find a room that can accommodate the entire block
       const suitableRoom = rooms.find(room => {
-        const currentOccupancy = occupancy.get(room.id) || 0
-        return room.capacity >= currentOccupancy + totalSize && room.is_available
+        const currentOccupancy = occupancy.get(room.id) || (room.current_occupancy || 0)
+        return room.capacity >= currentOccupancy + totalSize
       })
 
       if (suitableRoom) {
@@ -421,10 +514,7 @@ export async function runMatchingAlgorithm(): Promise<{
           occupancy.set(suitableRoom.id, (occupancy.get(suitableRoom.id) || 0) + 1)
         })
 
-        // Mark room as unavailable if full
-        if ((occupancy.get(suitableRoom.id) || 0) >= suitableRoom.capacity) {
-          suitableRoom.is_available = false
-        }
+        // Room occupancy will be updated later in the batch update
       } else {
         // Couldn't find a room for the block
         blockStudents.forEach(student => {
@@ -494,17 +584,16 @@ export async function runMatchingAlgorithm(): Promise<{
         // Find suitable room
         const roomTypePreference = student.preferences?.preferred_room_type
         let suitableRooms = rooms.filter(room => {
-          const currentOccupancy = occupancy.get(room.id) || 0
-          const hasSpace = room.capacity > currentOccupancy && room.is_available
+          const currentOccupancy = occupancy.get(room.id) || (room.current_occupancy || 0)
+          const hasSpace = room.capacity > currentOccupancy
           
           // If student has room type preference, try to match it
+          // Your schema uses "Double", "Single", "Suite" (capitalized)
           if (roomTypePreference && hasSpace) {
-            const roomTypeMap: Record<string, string> = {
-              'Single': 'single',
-              'Double': 'double',
-              'Suite': 'suite',
-            }
-            return room.room_type === roomTypeMap[roomTypePreference] || !roomTypePreference
+            // Normalize both to lowercase for comparison
+            const roomTypeLower = room.room_type?.toLowerCase()
+            const prefTypeLower = roomTypePreference.toLowerCase()
+            return roomTypeLower === prefTypeLower || !roomTypePreference
           }
           
           return hasSpace
@@ -512,8 +601,8 @@ export async function runMatchingAlgorithm(): Promise<{
 
         // Sort by capacity (prefer rooms that fit exactly)
         suitableRooms.sort((a, b) => {
-          const aOccupancy = occupancy.get(a.id) || 0
-          const bOccupancy = occupancy.get(b.id) || 0
+          const aOccupancy = occupancy.get(a.id) || (a.current_occupancy || 0)
+          const bOccupancy = occupancy.get(b.id) || (b.current_occupancy || 0)
           const aRemaining = a.capacity - aOccupancy
           const bRemaining = b.capacity - bOccupancy
           
@@ -529,7 +618,7 @@ export async function runMatchingAlgorithm(): Promise<{
 
         if (suitableRooms.length > 0) {
           const selectedRoom = suitableRooms[0]
-          const currentOccupancy = occupancy.get(selectedRoom.id) || 0
+          const currentOccupancy = occupancy.get(selectedRoom.id) || (selectedRoom.current_occupancy || 0)
           const remaining = selectedRoom.capacity - currentOccupancy
 
           // Assign student
@@ -563,36 +652,77 @@ export async function runMatchingAlgorithm(): Promise<{
 
     // Update room assignments in database
     for (const match of matches) {
-      const { error } = await supabaseAdmin
+      // Update room assignment - try both student_id and student_uuid
+      const updateData: any = {
+        room_id: match.room_id,
+        status: 'Confirmed',
+        assignment_date: new Date().toISOString().split('T')[0], // Set assignment date to today
+      }
+      
+      if (match.block_id !== null && match.block_id !== undefined) {
+        updateData.block_id = match.block_id
+      }
+
+      // Your schema uses student_uuid and integer room_id/block_id
+      // Convert room_id to integer if it's a string
+      const updateDataFinal = {
+        ...updateData,
+        room_id: typeof updateData.room_id === 'string' ? parseInt(updateData.room_id) : updateData.room_id,
+        block_id: updateData.block_id !== null && updateData.block_id !== undefined
+          ? (typeof updateData.block_id === 'string' ? parseInt(updateData.block_id) : updateData.block_id)
+          : null,
+      }
+
+      let updateError: any = null
+      let updateSuccess = false
+
+      // Your schema uses student_uuid
+      const { error: error1 } = await supabaseAdmin
         .from('room_assignments')
-        .update({
-          room_id: match.room_id,
-          block_id: match.block_id,
-          status: 'Assigned',
-        })
-        .eq('student_id', match.student_id)
+        .update(updateDataFinal)
+        .eq('student_uuid', match.student_id)
         .eq('status', 'Pending')
+
+      if (error1) {
+        // Try with student_id for compatibility
+        const { error: error2 } = await supabaseAdmin
+          .from('room_assignments')
+          .update(updateDataFinal)
+          .eq('student_id', match.student_id)
+          .eq('status', 'Pending')
+
+        if (error2) {
+          updateError = error2
+        } else {
+          updateSuccess = true
+        }
+      } else {
+        updateSuccess = true
+      }
+
+      if (!updateSuccess && updateError) {
+        errors.push(`Failed to assign room for student ${match.student_id}: ${updateError.message}`)
+      }
 
       if (error) {
         errors.push(`Failed to assign room for student ${match.student_id}: ${error.message}`)
       }
     }
 
-    // Update room availability
+    // Update room current_occupancy (your schema uses current_occupancy instead of is_available)
     const assignedRoomIds = [...new Set(matches.map(m => m.room_id))]
     for (const roomId of assignedRoomIds) {
       const room = rooms.find(r => r.id === roomId)
       if (room) {
-        const currentOccupancy = occupancy.get(roomId) || 0
-        if (currentOccupancy >= room.capacity) {
-          const { error } = await supabaseAdmin
-            .from('rooms')
-            .update({ is_available: false })
-            .eq('id', roomId)
+        const newOccupancy = occupancy.get(roomId) || (room.current_occupancy || 0)
+        // Update current_occupancy in rooms table
+        const { error } = await supabaseAdmin
+          .from('rooms')
+          .update({ current_occupancy: newOccupancy })
+          .eq('id', parseInt(roomId)) // Your schema uses integer IDs
 
-          if (error) {
-            errors.push(`Failed to update room ${roomId} availability: ${error.message}`)
-          }
+        if (error) {
+          errors.push(`Failed to update room ${roomId} occupancy: ${error.message}`)
         }
       }
     }

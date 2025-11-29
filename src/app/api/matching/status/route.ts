@@ -25,21 +25,28 @@ export async function GET() {
       throw new Error(`Failed to fetch pending assignments: ${pendingError.message}`)
     }
 
-    // Get assigned students count
+    // Get assigned students count (using 'Confirmed' status)
     const { count: assignedCount, error: assignedError } = await supabaseAdmin
       .from('room_assignments')
       .select('*', { count: 'exact', head: true })
-      .eq('status', 'Assigned')
+      .eq('status', 'Confirmed')
 
     if (assignedError) {
       throw new Error(`Failed to fetch assigned count: ${assignedError.message}`)
     }
 
-    // Get available rooms count
-    const { count: availableRoomsCount, error: roomsError } = await supabaseAdmin
+    // Get available rooms count (rooms where current_occupancy < max_capacity)
+    // We need to fetch all rooms and filter, as there's no is_available column
+    const { data: allRooms, error: roomsError } = await supabaseAdmin
       .from('rooms')
-      .select('*', { count: 'exact', head: true })
-      .eq('is_available', true)
+      .select('current_occupancy, max_capacity')
+
+    let availableRoomsCount = 0
+    if (!roomsError && allRooms) {
+      availableRoomsCount = allRooms.filter(
+        room => (room.current_occupancy || 0) < (room.max_capacity || 0)
+      ).length
+    }
 
     if (roomsError) {
       throw new Error(`Failed to fetch rooms: ${roomsError.message}`)
@@ -54,14 +61,22 @@ export async function GET() {
       throw new Error(`Failed to fetch total rooms: ${totalRoomsError.message}`)
     }
 
-    // Get blocks count
-    const { count: blocksCount, error: blocksError } = await supabaseAdmin
-      .from('blocks')
+    // Get blocks count - try both table names
+    let blocksCount = 0
+    const { count: blocksCount1, error: blocksError1 } = await supabaseAdmin
+      .from('student_blocks')
       .select('*', { count: 'exact', head: true })
 
-    if (blocksError) {
-      // Blocks table might not exist, that's okay
-      console.warn('Blocks table not found or error:', blocksError.message)
+    if (blocksError1) {
+      const { count: blocksCount2, error: blocksError2 } = await supabaseAdmin
+        .from('blocks')
+        .select('*', { count: 'exact', head: true })
+
+      if (!blocksError2) {
+        blocksCount = blocksCount2 || 0
+      }
+    } else {
+      blocksCount = blocksCount1 || 0
     }
 
     return NextResponse.json({
