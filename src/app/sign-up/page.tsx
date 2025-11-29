@@ -116,7 +116,12 @@ export default function SignUpPage() {
       // Check for auth errors
       if (signUpError) {
         console.error('Sign up error:', signUpError)
-        setError(signUpError.message || 'Failed to create account. Please try again.')
+        // Check if it's a "user already registered" error
+        if (signUpError.message === 'User already registered') {
+          setError('This email is already in use, please log in or try a different email')
+        } else {
+          setError(signUpError.message || 'Failed to create account. Please try again.')
+        }
         setIsLoading(false)
         return
       }
