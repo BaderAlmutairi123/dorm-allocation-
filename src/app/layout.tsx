@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import Image from "next/image";
 import "./globals.css";
 import NavigationMenuApp from "@/components/NavigationMenuApp";
 import AuthButton from "@/components/auth/AuthButton";
@@ -30,6 +31,16 @@ export default function RootLayout({
         <header className="border-b">
           <div className="container mx-auto px-4 py-3 flex justify-between items-center">
             <NavigationMenuApp />
+            <div className="flex-1 flex justify-center items-center gap-3">
+              <Image
+                src="/Hoflogo.png"
+                alt="Hofstra Logo"
+                width={1920}
+                height={1080}
+                className="h-12 w-auto"
+              />
+              <span className="text-xl font-semibold">HofstraHousing</span>
+            </div>
             <AuthButton />
           </div>
         </header>
