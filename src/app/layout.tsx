@@ -29,9 +29,11 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <header className="border-b">
-          <div className="container mx-auto px-4 py-3 flex justify-between items-center">
-            <NavigationMenuApp />
-            <div className="flex-1 flex justify-center items-center gap-3">
+          <div className="container mx-auto px-4 py-3 grid grid-cols-3 items-center">
+            <div className="flex justify-start">
+              <NavigationMenuApp />
+            </div>
+            <div className="flex justify-center items-center gap-3">
               <Image
                 src="/Hoflogo.png"
                 alt="Hofstra Logo"
@@ -41,7 +43,9 @@ export default function RootLayout({
               />
               <span className="text-xl font-semibold">HofstraHousing</span>
             </div>
-            <AuthButton />
+            <div className="flex justify-end">
+              <AuthButton />
+            </div>
           </div>
         </header>
 

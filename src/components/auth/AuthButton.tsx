@@ -9,7 +9,6 @@ export default function AuthButton() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [userName, setUserName] = useState('')
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
-  const [closeTimeout, setCloseTimeout] = useState<NodeJS.Timeout | null>(null)
   const router = useRouter()
 
   useEffect(() => {
@@ -108,42 +107,48 @@ export default function AuthButton() {
     console.log('=== LOGOUT CLICKED ===')
     try {
       console.log('Attempting to sign out...')
+      setIsDropdownOpen(false)
+
+      // Sign out from Supabase (global scope to clear all sessions)
       await authClient.signOut()
       console.log('Sign out successful')
+
+      // Clear local state
       setIsAuthenticated(false)
       setUserName('')
-      setIsDropdownOpen(false)
-      router.push('/sign-in')
-      router.refresh()
+
+      // Use window.location for a hard navigation to ensure all state is cleared
+      window.location.href = '/sign-in'
     } catch (error) {
       console.error('Logout error:', error)
       alert('Failed to sign out: ' + error)
     }
   }
 
-  const handleMouseEnter = () => {
-    if (closeTimeout) {
-      clearTimeout(closeTimeout)
-      setCloseTimeout(null)
-    }
-    setIsDropdownOpen(true)
+  const toggleDropdown = () => {
+    setIsDropdownOpen(!isDropdownOpen)
   }
 
-  const handleMouseLeave = () => {
-    const timeout = setTimeout(() => {
-      setIsDropdownOpen(false)
-    }, 200) // 200ms delay to allow click to register
-    setCloseTimeout(timeout)
-  }
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement
+      if (isDropdownOpen && !target.closest('.auth-dropdown-container')) {
+        setIsDropdownOpen(false)
+      }
+    }
+
+    document.addEventListener('click', handleClickOutside)
+    return () => document.removeEventListener('click', handleClickOutside)
+  }, [isDropdownOpen])
 
   if (isAuthenticated) {
     return (
-      <div
-        className="relative"
-        onMouseEnter={handleMouseEnter}
-        onMouseLeave={handleMouseLeave}
-      >
-        <button className="text-sm text-gray-700 hover:text-gray-900 cursor-pointer py-2">
+      <div className="relative auth-dropdown-container">
+        <button
+          onClick={toggleDropdown}
+          className="text-sm text-gray-700 hover:text-gray-900 cursor-pointer py-2"
+        >
           Welcome, {userName}
         </button>
 
