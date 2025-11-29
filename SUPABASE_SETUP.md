@@ -46,138 +46,112 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 You need to create the database tables in Supabase. Go to **SQL Editor** in your Supabase dashboard and run this SQL:
 
 ```sql
--- Enable UUID extension
+-- Enable UUID generation for students table
+--DO NOT RUN THIS QUERY, WILL NOT WORK 
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- Students table
+-- ================================================
+-- 1) STUDENTS
+-- ================================================
 CREATE TABLE students (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  email TEXT UNIQUE NOT NULL,
-  first_name TEXT NOT NULL,
-  last_name TEXT NOT NULL,
-  year_level INTEGER NOT NULL,
-  gpa DECIMAL(3,2),
-  phone TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW()
+    student_id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    first_name VARCHAR(50) NOT NULL,
+    last_name VARCHAR(50) NOT NULL,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    phone VARCHAR(20) UNIQUE NOT NULL,
+    gender VARCHAR(50) CHECK (gender IN ('Male', 'Female', 'Other')) NOT NULL,
+    year_level VARCHAR(50) NOT NULL,
+    major VARCHAR(50),
+    gpa DECIMAL(3,2)
 );
 
--- Preferences table
-CREATE TABLE preferences (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  student_id UUID REFERENCES students(id) ON DELETE CASCADE,
-  sleep_schedule TEXT CHECK (sleep_schedule IN ('early', 'late', 'flexible')),
-  study_habits TEXT CHECK (study_habits IN ('quiet', 'moderate', 'social')),
-  cleanliness TEXT CHECK (cleanliness IN ('very_clean', 'clean', 'moderate', 'relaxed')),
-  guest_policy TEXT CHECK (guest_policy IN ('never', 'rarely', 'sometimes', 'often')),
-  interests TEXT[],
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW()
+-- ================================================
+-- 2) DORMS
+-- ================================================
+CREATE TABLE dorms (
+    dorm_id SERIAL PRIMARY KEY,
+    dorm_name VARCHAR(255) NOT NULL,
+    address VARCHAR(255),
+    dorm_gender VARCHAR(50) CHECK (dorm_gender IN ('Male', 'Female', 'Co-ed')) NOT NULL,
+    dorm_type VARCHAR(50) CHECK (dorm_type IN ('Single', 'Double', 'Suite')) NOT NULL
 );
 
--- Blocks table
-CREATE TABLE blocks (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  name TEXT NOT NULL,
-  leader_id UUID REFERENCES students(id) ON DELETE CASCADE,
-  max_size INTEGER DEFAULT 8,
-  current_size INTEGER DEFAULT 1,
-  dorm_preferences TEXT[],
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- Block members table
-CREATE TABLE block_members (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  block_id UUID REFERENCES blocks(id) ON DELETE CASCADE,
-  student_id UUID REFERENCES students(id) ON DELETE CASCADE,
-  status TEXT CHECK (status IN ('pending', 'accepted', 'declined')) DEFAULT 'pending',
-  joined_at TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE(block_id, student_id)
-);
-
--- Rooms table
+-- ================================================
+-- 3) ROOMS (capacity 1–4)
+-- ================================================
 CREATE TABLE rooms (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  building_name TEXT NOT NULL,
-  room_number TEXT NOT NULL,
-  capacity INTEGER NOT NULL,
-  room_type TEXT CHECK (room_type IN ('single', 'double', 'triple', 'suite')),
-  floor INTEGER,
-  is_available BOOLEAN DEFAULT TRUE,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE(building_name, room_number)
+    room_id SERIAL PRIMARY KEY,
+    dorm_id INTEGER NOT NULL REFERENCES dorms(dorm_id),
+    room_number VARCHAR(10) NOT NULL,
+    floor_number INTEGER,
+    room_type VARCHAR(20) NOT NULL,
+    max_capacity INTEGER CHECK (max_capacity BETWEEN 1 AND 4) NOT NULL,
+    current_occupancy INTEGER DEFAULT 0,
+    wants_suite_bathroom BOOLEAN DEFAULT FALSE,
+    is_accessible BOOLEAN DEFAULT FALSE,
+    CHECK (current_occupancy BETWEEN 0 AND max_capacity)
 );
 
--- Assignments table
-CREATE TABLE assignments (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  student_id UUID REFERENCES students(id) ON DELETE CASCADE,
-  room_id UUID REFERENCES rooms(id) ON DELETE CASCADE,
-  block_id UUID REFERENCES blocks(id) ON DELETE SET NULL,
-  academic_year TEXT NOT NULL,
-  semester TEXT CHECK (semester IN ('fall', 'spring')),
-  assigned_at TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE(student_id, academic_year, semester)
+-- ================================================
+-- 4) STUDENT BLOCKS (capacity 2–4)
+-- ================================================
+CREATE TABLE student_blocks (
+    block_id SERIAL PRIMARY KEY,
+    block_leader_id UUID NOT NULL REFERENCES students(student_id),
+    max_capacity INTEGER CHECK (max_capacity BETWEEN 2 AND 4) NOT NULL,
+    current_capacity INTEGER DEFAULT 0,
+    CHECK (current_capacity BETWEEN 0 AND max_capacity)
 );
 
--- Compatibility scores table
-CREATE TABLE compatibility_scores (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  student_1_id UUID REFERENCES students(id) ON DELETE CASCADE,
-  student_2_id UUID REFERENCES students(id) ON DELETE CASCADE,
-  score DECIMAL(5,2) NOT NULL,
-  breakdown JSONB,
-  calculated_at TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE(student_1_id, student_2_id)
+-- ================================================
+-- 5) BLOCK MEMBERS
+-- ================================================
+CREATE TABLE block_members (
+    membership_id SERIAL PRIMARY KEY,
+    block_id INTEGER NOT NULL REFERENCES student_blocks(block_id),
+    student_id UUID NOT NULL REFERENCES students(student_id),
+    joined_date DATE DEFAULT CURRENT_DATE,
+    is_leader BOOLEAN DEFAULT FALSE,
+    UNIQUE (block_id, student_id)
 );
 
--- Waitlist table
-CREATE TABLE waitlist (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  student_id UUID REFERENCES students(id) ON DELETE CASCADE,
-  position INTEGER NOT NULL,
-  priority TEXT CHECK (priority IN ('high', 'normal', 'low')) DEFAULT 'normal',
-  added_at TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE(student_id)
+-- ================================================
+-- 6) STUDENT PREFERENCES
+-- ================================================
+CREATE TABLE student_preferences (
+    preference_id SERIAL PRIMARY KEY,
+    student_id UUID NOT NULL REFERENCES students(student_id),
+    preferred_room_type VARCHAR(20),
+    first_choice_dorm_id INTEGER REFERENCES dorms(dorm_id),
+    second_choice_dorm_id INTEGER REFERENCES dorms(dorm_id),
+    third_choice_dorm_id INTEGER REFERENCES dorms(dorm_id),
+    bedtime VARCHAR(20) CHECK (bedtime IN ('Night Owl', 'Early Bird')),
+    noise_level INTEGER CHECK (noise_level BETWEEN 1 AND 5),
+    cleanliness_level INTEGER CHECK (cleanliness_level BETWEEN 1 AND 5),
+    guest_policy_preference INTEGER CHECK (guest_policy_preference BETWEEN 0 AND 4)
 );
 
--- Create indexes for better performance
-CREATE INDEX idx_students_email ON students(email);
-CREATE INDEX idx_preferences_student_id ON preferences(student_id);
-CREATE INDEX idx_blocks_leader_id ON blocks(leader_id);
-CREATE INDEX idx_block_members_block_id ON block_members(block_id);
-CREATE INDEX idx_block_members_student_id ON block_members(student_id);
-CREATE INDEX idx_assignments_student_id ON assignments(student_id);
-CREATE INDEX idx_assignments_room_id ON assignments(room_id);
-CREATE INDEX idx_compatibility_student_1 ON compatibility_scores(student_1_id);
-CREATE INDEX idx_compatibility_student_2 ON compatibility_scores(student_2_id);
-CREATE INDEX idx_waitlist_position ON waitlist(position);
+-- ================================================
+-- 7) ROOM ASSIGNMENTS
+-- ================================================
+CREATE TABLE room_assignments (
+    assignment_id SERIAL PRIMARY KEY,
+    student_id UUID REFERENCES students(student_id),
+    block_id INTEGER REFERENCES student_blocks(block_id),
+    room_id INTEGER REFERENCES rooms(room_id), -- allow NULL until assigned
+    assignment_date DATE DEFAULT CURRENT_DATE,
+    status VARCHAR(20) DEFAULT 'Pending' CHECK (status IN ('Pending', 'Confirmed')),
+    CHECK (
+        (student_id IS NOT NULL AND block_id IS NULL)
+        OR (student_id IS NULL AND block_id IS NOT NULL)
+    ),
+    CHECK (
+        (status = 'Pending' AND room_id IS NULL)
+        OR (status = 'Confirmed' AND room_id IS NOT NULL)
+    )
+);
 
--- Create updated_at trigger function
-CREATE OR REPLACE FUNCTION update_updated_at_column()
-RETURNS TRIGGER AS $$
-BEGIN
-    NEW.updated_at = NOW();
-    RETURN NEW;
-END;
-$$ language 'plpgsql';
 
--- Add triggers to update updated_at automatically
-CREATE TRIGGER update_students_updated_at BEFORE UPDATE ON students
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
-CREATE TRIGGER update_preferences_updated_at BEFORE UPDATE ON preferences
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
-CREATE TRIGGER update_blocks_updated_at BEFORE UPDATE ON blocks
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
-CREATE TRIGGER update_rooms_updated_at BEFORE UPDATE ON rooms
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-```
 
 ### 5. Enable Row Level Security (Optional but Recommended)
 

@@ -140,18 +140,34 @@ export default function SignUpPage() {
       console.log('User created, inserting into students table...')
 
       // Insert student record into the students table
-      const { error: insertError } = await supabase
+      console.log('=== ATTEMPTING TO INSERT STUDENT RECORD ===')
+      console.log('Student ID:', data.user.id)
+      console.log('Email:', email.trim())
+      console.log('First Name:', firstName.trim())
+      console.log('Last Name:', lastName.trim())
+
+      const { data: insertData, error: insertError } = await supabase
         .from('students')
         .insert({
           student_id: data.user.id,
           email: email.trim(),
           first_name: firstName.trim(),
           last_name: lastName.trim(),
-          year_level: 1, // Default to freshman, can be updated in application
+          year_level: '1', // Default to freshman as string to match VARCHAR schema
         })
+        .select()
+
+      console.log('=== INSERT RESULT ===')
+      console.log('Insert Data:', insertData)
+      console.log('Insert Error:', insertError)
 
       if (insertError) {
         console.error('Error creating student profile:', insertError)
+        console.error('Error Code:', insertError.code)
+        console.error('Error Message:', insertError.message)
+        console.error('Error Details:', insertError.details)
+        console.error('Error Hint:', insertError.hint)
+
         // Check if it's a duplicate key error (race condition - user was created between our check and now)
         if (insertError.code === '23505') {
           // Duplicate key - this email was registered during sign-up process
@@ -162,12 +178,13 @@ export default function SignUpPage() {
         } else {
           // Show the actual error to the user for debugging
           console.error('Database insert failed:', insertError.message || insertError)
-          setError(`Failed to create student profile. Please try again or contact support.`)
+          setError(`Failed to create student profile: ${insertError.message}. Please check the console for details.`)
           setIsLoading(false)
           return
         }
       } else {
-        console.log('Student profile created successfully')
+        console.log('✓ Student profile created successfully!')
+        console.log('Inserted data:', insertData)
       }
 
       // Redirect to application page

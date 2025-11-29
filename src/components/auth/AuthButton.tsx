@@ -9,6 +9,7 @@ export default function AuthButton() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [userName, setUserName] = useState('')
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
+  const [closeTimeout, setCloseTimeout] = useState<NodeJS.Timeout | null>(null)
   const router = useRouter()
 
   useEffect(() => {
@@ -62,7 +63,13 @@ export default function AuthButton() {
           setIsAuthenticated(false)
           setUserName('')
         }
-      } catch {
+      } catch (error: any) {
+        console.error('Auth check error:', error)
+        // Clear invalid session data
+        if (error?.message?.includes('refresh_token_not_found') || error?.message?.includes('Invalid Refresh Token')) {
+          console.log('Clearing invalid session...')
+          await supabase.auth.signOut()
+        }
         setIsAuthenticated(false)
         setUserName('')
       }
@@ -72,14 +79,20 @@ export default function AuthButton() {
 
     // Listen for auth state changes
     const { data: authListener } = authClient.onAuthStateChange(async (event, session) => {
-      if (session) {
-        setIsAuthenticated(true)
-        const user = await authClient.getUser()
-        if (user) {
-          const displayName = await getUserDisplayName(user)
-          setUserName(displayName)
+      try {
+        if (session) {
+          setIsAuthenticated(true)
+          const user = await authClient.getUser()
+          if (user) {
+            const displayName = await getUserDisplayName(user)
+            setUserName(displayName)
+          }
+        } else {
+          setIsAuthenticated(false)
+          setUserName('')
         }
-      } else {
+      } catch (error) {
+        console.error('Auth state change error:', error)
         setIsAuthenticated(false)
         setUserName('')
       }
@@ -92,23 +105,43 @@ export default function AuthButton() {
   }, [])
 
   const handleLogout = async () => {
+    console.log('=== LOGOUT CLICKED ===')
     try {
+      console.log('Attempting to sign out...')
       await authClient.signOut()
+      console.log('Sign out successful')
       setIsAuthenticated(false)
       setUserName('')
       setIsDropdownOpen(false)
       router.push('/sign-in')
+      router.refresh()
     } catch (error) {
       console.error('Logout error:', error)
+      alert('Failed to sign out: ' + error)
     }
+  }
+
+  const handleMouseEnter = () => {
+    if (closeTimeout) {
+      clearTimeout(closeTimeout)
+      setCloseTimeout(null)
+    }
+    setIsDropdownOpen(true)
+  }
+
+  const handleMouseLeave = () => {
+    const timeout = setTimeout(() => {
+      setIsDropdownOpen(false)
+    }, 200) // 200ms delay to allow click to register
+    setCloseTimeout(timeout)
   }
 
   if (isAuthenticated) {
     return (
       <div
         className="relative"
-        onMouseEnter={() => setIsDropdownOpen(true)}
-        onMouseLeave={() => setIsDropdownOpen(false)}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
       >
         <button className="text-sm text-gray-700 hover:text-gray-900 cursor-pointer py-2">
           Welcome, {userName}
