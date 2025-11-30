@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Users, Copy, Check, UserPlus, Home, Search, Bell } from "lucide-react";
-import { authClient } from "@/lib/supabase/auth";
+import { useAuth } from "@/components/auth/AuthProvider";
 
 interface BlockMember {
   id: string;
@@ -45,12 +45,12 @@ type TabType = "block" | "roommates" | "notifications";
 export default function BlocksPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { user, loading } = useAuth();
   const [activeTab, setActiveTab] = useState<TabType>("block");
   const [block, setBlock] = useState<Block | null>(null);
   const [joinCode, setJoinCode] = useState("");
   const [copied, setCopied] = useState(false);
   const [currentStudent, setCurrentStudent] = useState<BlockMember | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
 
@@ -110,61 +110,27 @@ export default function BlocksPage() {
     setActiveTab("notifications");
   };
 
+  // Handle auth state from context
   useEffect(() => {
-    let isMounted = true;
+    if (loading) return; // Wait for auth to load
 
-    const loadCurrentUser = async () => {
-      try {
-        const session = await authClient.getSession();
-        if (!session) {
-          // No session - redirect to sign-in
-          if (isMounted) {
-            router.push('/sign-in');
-          }
-          return;
-        }
+    if (!user) {
+      // No user - redirect to sign-in
+      router.push('/sign-in');
+      return;
+    }
 
-        if (session && isMounted) {
-          const user = await authClient.getUser();
-          if (user && isMounted) {
-            const firstName = user.user_metadata?.first_name || "";
-            const lastName = user.user_metadata?.last_name || "";
-            const name = `${firstName} ${lastName}`.trim() || user.email?.split("@")[0] || "You";
+    // Set current student from auth context
+    const firstName = user.user_metadata?.first_name || "";
+    const lastName = user.user_metadata?.last_name || "";
+    const name = `${firstName} ${lastName}`.trim() || user.email?.split("@")[0] || "You";
 
-            setCurrentStudent({
-              id: user.id,
-              name,
-              email: user.email || "",
-            });
-          }
-        }
-      } catch (error) {
-        console.error("Error loading user:", error);
-        // On error, redirect to sign-in
-        if (isMounted) {
-          router.push('/sign-in');
-        }
-      } finally {
-        if (isMounted) {
-          setIsLoading(false);
-        }
-      }
-    };
-
-    loadCurrentUser();
-
-    // Fallback timeout to ensure loading doesn't hang forever
-    const timeout = setTimeout(() => {
-      if (isMounted) {
-        setIsLoading(false);
-      }
-    }, 5000);
-
-    return () => {
-      isMounted = false;
-      clearTimeout(timeout);
-    };
-  }, [router]);
+    setCurrentStudent({
+      id: user.id,
+      name,
+      email: user.email || "",
+    });
+  }, [user, loading, router]);
 
   const generateCode = () => {
     return Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -220,7 +186,7 @@ export default function BlocksPage() {
     setJoinCode("");
   };
 
-  if (isLoading) {
+  if (loading) {
     return (
       <div className="min-h-screen" style={{ backgroundColor: '#2D3BA6' }}>
         <div className="container mx-auto px-4 py-8">

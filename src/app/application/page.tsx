@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useState, useEffect } from "react";
-import { authClient } from "@/lib/supabase/auth";
+import { useAuth } from "@/components/auth/AuthProvider";
 import { supabase } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 
@@ -129,6 +129,7 @@ const HOFSTRA_MAJORS = [
 
 export default function ApplicationPage() {
   const router = useRouter();
+  const { user, loading } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
@@ -162,91 +163,73 @@ export default function ApplicationPage() {
     return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase()
   }
 
-  // Load user data from auth on mount
+  // Load user data from auth context
   useEffect(() => {
     const loadUserData = async () => {
+      if (loading) return; // Wait for auth to load
+
+      if (!user) {
+        // No user, redirect to sign-in
+        router.push('/sign-in');
+        return;
+      }
+
       try {
-        // Check if session exists first
-        const session = await authClient.getSession();
-        if (!session) {
-          // No session, redirect to sign-in
-          router.push('/sign-in');
-          return;
-        }
+        // First, try to get data from user metadata
+        let firstName = user.user_metadata?.first_name || "";
+        let lastName = user.user_metadata?.last_name || "";
 
-        // Get user data
-        const user = await authClient.getUser();
-        if (user) {
-          // First, try to get data from user metadata
-          let firstName = user.user_metadata?.first_name || "";
-          let lastName = user.user_metadata?.last_name || "";
+        // Fetch full student data from students table
+        const { data: studentData, error: studentError } = await supabase
+          .from('students')
+          .select('first_name, last_name, phone, gender, year_level, major')
+          .eq('student_id', user.id)
+          .single();
 
-          // Fetch full student data from students table
-          const { data: studentData, error: studentError } = await supabase
-            .from('students')
-            .select('first_name, last_name, phone, gender, year_level, major')
+        if (!studentError && studentData) {
+          firstName = studentData.first_name || firstName;
+          lastName = studentData.last_name || lastName;
+
+          // Capitalize first letter of names
+          firstName = capitalizeFirstLetter(firstName);
+          lastName = capitalizeFirstLetter(lastName);
+
+          // Check if student has already submitted preferences
+          const { data: preferencesData, error: preferencesError } = await supabase
+            .from('student_preferences')
+            .select('*')
             .eq('student_id', user.id)
             .single();
 
-          if (!studentError && studentData) {
-            firstName = studentData.first_name || firstName;
-            lastName = studentData.last_name || lastName;
+          if (!preferencesError && preferencesData) {
+            // Student has already submitted - load their data and set as submitted
+            setIsSubmitted(true);
 
-            // Capitalize first letter of names
-            firstName = capitalizeFirstLetter(firstName);
-            lastName = capitalizeFirstLetter(lastName);
+            // Convert year_level number back to text for display
+            const yearLevelText: { [key: number]: string } = {
+              1: 'Freshman',
+              2: 'Sophomore',
+              3: 'Junior',
+              4: 'Senior',
+            };
 
-            // Check if student has already submitted preferences
-            const { data: preferencesData, error: preferencesError } = await supabase
-              .from('student_preferences')
-              .select('*')
-              .eq('student_id', user.id)
-              .single();
-
-            if (!preferencesError && preferencesData) {
-              // Student has already submitted - load their data and set as submitted
-              setIsSubmitted(true);
-
-              // Convert year_level number back to text for display
-              const yearLevelText: { [key: number]: string } = {
-                1: 'Freshman',
-                2: 'Sophomore',
-                3: 'Junior',
-                4: 'Senior',
-              };
-
-              setFormData({
-                studentId: user.id,
-                email: user.email || "",
-                firstName: firstName,
-                lastName: lastName,
-                phone: studentData.phone ? `(${studentData.phone.slice(0, 3)}) ${studentData.phone.slice(3, 6)}-${studentData.phone.slice(6)}` : "",
-                gender: studentData.gender || "",
-                major: studentData.major || "",
-                year: yearLevelText[studentData.year_level] || "",
-                roomType: preferencesData.preferred_room_type || "",
-                bedtime: preferencesData.bedtime || "",
-                noiseLevel: preferencesData.noise_level?.toString() || "",
-                cleanlinessLevel: preferencesData.cleanliness_level?.toString() || "",
-                guestPolicy: preferencesData.guest_policy_preference?.toString() || "",
-              });
-            } else {
-              // Student hasn't submitted yet - just set basic info
-              // Capitalize first letter of names
-              const capitalizedFirstName = capitalizeFirstLetter(firstName);
-              const capitalizedLastName = capitalizeFirstLetter(lastName);
-
-              setFormData(prev => ({
-                ...prev,
-                studentId: user.id,
-                email: user.email || "",
-                firstName: capitalizedFirstName,
-                lastName: capitalizedLastName,
-              }));
-            }
+            setFormData({
+              studentId: user.id,
+              email: user.email || "",
+              firstName: firstName,
+              lastName: lastName,
+              phone: studentData.phone ? `(${studentData.phone.slice(0, 3)}) ${studentData.phone.slice(3, 6)}-${studentData.phone.slice(6)}` : "",
+              gender: studentData.gender || "",
+              major: studentData.major || "",
+              year: yearLevelText[studentData.year_level] || "",
+              roomType: preferencesData.preferred_room_type || "",
+              bedtime: preferencesData.bedtime || "",
+              noiseLevel: preferencesData.noise_level?.toString() || "",
+              cleanlinessLevel: preferencesData.cleanliness_level?.toString() || "",
+              guestPolicy: preferencesData.guest_policy_preference?.toString() || "",
+            });
           } else {
-            // No student data found, just set basic info from auth
-            // Capitalize first letter of names
+            // Student hasn't submitted yet - just set basic info
             const capitalizedFirstName = capitalizeFirstLetter(firstName);
             const capitalizedLastName = capitalizeFirstLetter(lastName);
 
@@ -259,18 +242,25 @@ export default function ApplicationPage() {
             }));
           }
         } else {
-          // No user logged in, redirect to sign-in
-          router.push('/sign-in');
+          // No student data found, just set basic info from auth
+          const capitalizedFirstName = capitalizeFirstLetter(firstName);
+          const capitalizedLastName = capitalizeFirstLetter(lastName);
+
+          setFormData(prev => ({
+            ...prev,
+            studentId: user.id,
+            email: user.email || "",
+            firstName: capitalizedFirstName,
+            lastName: capitalizedLastName,
+          }));
         }
       } catch (err) {
-        console.error('Error loading user:', err);
-        // If there's an auth error, redirect to sign-in
-        router.push('/sign-in');
+        console.error('Error loading user data:', err);
       }
     };
 
     loadUserData();
-  }, [router]);
+  }, [user, loading, router]);
 
   // Close major dropdown when clicking outside
   useEffect(() => {

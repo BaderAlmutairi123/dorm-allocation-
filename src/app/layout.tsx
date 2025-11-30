@@ -4,6 +4,7 @@ import Image from "next/image";
 import "./globals.css";
 import NavigationMenuApp from "@/components/NavigationMenuApp";
 import AuthButton from "@/components/auth/AuthButton";
+import { AuthProvider } from "@/components/auth/AuthProvider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -28,28 +29,30 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        <header className="border-b">
-          <div className="container mx-auto px-4 py-3 grid grid-cols-3 items-center">
-            <div className="flex justify-start">
-              <NavigationMenuApp />
+        <AuthProvider>
+          <header className="border-b">
+            <div className="container mx-auto px-4 py-3 grid grid-cols-3 items-center">
+              <div className="flex justify-start">
+                <NavigationMenuApp />
+              </div>
+              <div className="flex justify-center items-center gap-3">
+                <Image
+                  src="/Hoflogo.png"
+                  alt="Hofstra Logo"
+                  width={1920}
+                  height={1080}
+                  className="h-12 w-auto"
+                />
+                <span className="text-xl font-semibold">HofstraHousing</span>
+              </div>
+              <div className="flex justify-end">
+                <AuthButton />
+              </div>
             </div>
-            <div className="flex justify-center items-center gap-3">
-              <Image
-                src="/Hoflogo.png"
-                alt="Hofstra Logo"
-                width={1920}
-                height={1080}
-                className="h-12 w-auto"
-              />
-              <span className="text-xl font-semibold">HofstraHousing</span>
-            </div>
-            <div className="flex justify-end">
-              <AuthButton />
-            </div>
-          </div>
-        </header>
+          </header>
 
-        <main>{children}</main>
+          <main>{children}</main>
+        </AuthProvider>
       </body>
     </html>
   );
