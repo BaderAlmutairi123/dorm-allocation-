@@ -307,9 +307,6 @@ export default function AssignmentPage() {
         <Link href="/dashboard">
           <Button variant="outline">Back to Dashboard</Button>
         </Link>
-        <Link href="/buildings">
-          <Button variant="outline">View Building Info</Button>
-        </Link>
       </div>
     </div>
   );

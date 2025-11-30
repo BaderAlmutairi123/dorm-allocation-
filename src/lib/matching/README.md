@@ -67,37 +67,6 @@ Returns current matching statistics.
 }
 ```
 
-### Calculate Compatibility
-```
-GET /api/matching/compatibility?student1=uuid1&student2=uuid2
-```
-Calculates compatibility score between two specific students.
-
-**Response:**
-```json
-{
-  "student1": {
-    "id": "uuid1",
-    "name": "John Doe"
-  },
-  "student2": {
-    "id": "uuid2",
-    "name": "Jane Smith"
-  },
-  "compatibility": {
-    "student1_id": "uuid1",
-    "student2_id": "uuid2",
-    "score": 85,
-    "breakdown": {
-      "bedtime": 100,
-      "noiseLevel": 80,
-      "cleanliness": 90,
-      "guestPolicy": 70
-    }
-  }
-}
-```
-
 ## Compatibility Scoring
 
 The compatibility score is calculated as a weighted average:

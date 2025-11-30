@@ -255,22 +255,6 @@ export default function DashboardPage() {
                 Find Roommates
               </Button>
             </Link>
-
-            <Link href="/buildings">
-              <Button className="w-full justify-start" variant="outline">
-                <Home className="mr-2 h-4 w-4" />
-                View Dorm Buildings
-              </Button>
-            </Link>
-
-            {status.preferencesComplete && (
-              <Link href="/compatibility">
-                <Button className="w-full justify-start" variant="outline">
-                  <Users className="mr-2 h-4 w-4" />
-                  Check Compatibility
-                </Button>
-              </Link>
-            )}
           </div>
         </CardContent>
       </Card>
