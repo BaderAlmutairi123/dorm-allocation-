@@ -37,7 +37,7 @@ export const authClient = {
    * Sign out the current user
    */
   async signOut() {
-    const { error } = await supabase.auth.signOut()
+    const { error } = await supabase.auth.signOut({ scope: 'global' })
     if (error) throw error
   },
 

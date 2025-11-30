@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { authClient } from '@/lib/supabase/auth'
+import  Image from 'next/image'
 import Link from 'next/link'
 
 export default function SignInPage() {
@@ -18,25 +19,43 @@ export default function SignInPage() {
     setError('')
 
     try {
+      console.log('Attempting sign in with email:', email)
+
       // Sign in using Supabase client-side auth
       const data = await authClient.signIn(email, password)
 
+      console.log('Sign in response:', data)
+
       // Success - Supabase automatically handles session storage
       if (data?.user) {
+        console.log('Sign in successful, redirecting...')
         router.push('/application')
         router.refresh() // Refresh to update auth state
+      } else {
+        console.error('No user data returned from sign in')
+        setError('Sign in failed. Please check your credentials.')
+        setIsLoading(false)
       }
     } catch (err: any) {
+      console.error('Sign in error:', err)
       setError(err.message || 'An error occurred. Please try again.')
-    } finally {
       setIsLoading(false)
     }
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8">
+    <div className="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8" style={{ backgroundColor: '#2D3BA6' }}>
+      <div className="max-w-md w-full bg-white rounded-lg shadow-xl p-8 space-y-8">
         <div>
+        <div className="flex justify-center mb-6">
+            <Image
+              src="/Hoflogo.png"
+              alt="Hofstra Logo"
+              width={1920}
+              height={1080}
+              className='h-24 w-auto'
+            />
+          </div>
           <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
             Log in to your account
           </h2>
@@ -96,10 +115,7 @@ export default function SignInPage() {
             </button>
           </div>
 
-          <div className="text-center space-y-2">
-            <a href="#" className="block font-medium text-indigo-600 hover:text-indigo-500">
-              Forgot your password?
-            </a>
+          <div className="text-center">
             <p className="text-sm text-gray-600">
               Don't have an account?{' '}
               <Link href="/sign-up" className="font-medium text-indigo-600 hover:text-indigo-500">

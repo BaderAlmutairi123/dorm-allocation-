@@ -703,10 +703,6 @@ export async function runMatchingAlgorithm(): Promise<{
       if (!updateSuccess && updateError) {
         errors.push(`Failed to assign room for student ${match.student_id}: ${updateError.message}`)
       }
-
-      if (error) {
-        errors.push(`Failed to assign room for student ${match.student_id}: ${error.message}`)
-      }
     }
 
     // Update room current_occupancy (your schema uses current_occupancy instead of is_available)

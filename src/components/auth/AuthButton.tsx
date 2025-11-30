@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { authClient } from '@/lib/supabase/auth'
+import { supabase } from '@/lib/supabase/client'
 
 export default function AuthButton() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
@@ -11,6 +12,41 @@ export default function AuthButton() {
   const router = useRouter()
 
   useEffect(() => {
+    const capitalizeFirstLetter = (str: string) => {
+      if (!str) return ''
+      return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase()
+    }
+
+    const getUserDisplayName = async (user: any) => {
+      // First, try to get name from user metadata
+      let firstName = user.user_metadata?.first_name || ''
+      let lastName = user.user_metadata?.last_name || ''
+
+      // If metadata is empty, try fetching from students table
+      if (!firstName || !lastName) {
+        try {
+          const { data: studentData, error } = await supabase
+            .from('students')
+            .select('first_name, last_name')
+            .eq('student_id', user.id)
+            .single()
+
+          if (!error && studentData) {
+            firstName = studentData.first_name || firstName
+            lastName = studentData.last_name || lastName
+          }
+        } catch (err) {
+          console.error('Error fetching student data:', err)
+        }
+      }
+
+      // Capitalize first letter of first and last name
+      const formattedFirstName = capitalizeFirstLetter(firstName)
+      const formattedLastName = capitalizeFirstLetter(lastName)
+
+      return `${formattedFirstName} ${formattedLastName}`.trim() || user.email || 'User'
+    }
+
     const checkAuth = async () => {
       try {
         const session = await authClient.getSession()
@@ -18,16 +54,21 @@ export default function AuthButton() {
           setIsAuthenticated(true)
           // Get user data to display name
           const user = await authClient.getUser()
-          if (user && user.user_metadata) {
-            const firstName = user.user_metadata.first_name || ''
-            const lastName = user.user_metadata.last_name || ''
-            setUserName(`${firstName} ${lastName}`.trim() || user.email || 'User')
+          if (user) {
+            const displayName = await getUserDisplayName(user)
+            setUserName(displayName)
           }
         } else {
           setIsAuthenticated(false)
           setUserName('')
         }
-      } catch {
+      } catch (error: any) {
+        console.error('Auth check error:', error)
+        // Clear invalid session data
+        if (error?.message?.includes('refresh_token_not_found') || error?.message?.includes('Invalid Refresh Token')) {
+          console.log('Clearing invalid session...')
+          await supabase.auth.signOut()
+        }
         setIsAuthenticated(false)
         setUserName('')
       }
@@ -37,15 +78,20 @@ export default function AuthButton() {
 
     // Listen for auth state changes
     const { data: authListener } = authClient.onAuthStateChange(async (event, session) => {
-      if (session) {
-        setIsAuthenticated(true)
-        const user = await authClient.getUser()
-        if (user && user.user_metadata) {
-          const firstName = user.user_metadata.first_name || ''
-          const lastName = user.user_metadata.last_name || ''
-          setUserName(`${firstName} ${lastName}`.trim() || user.email || 'User')
+      try {
+        if (session) {
+          setIsAuthenticated(true)
+          const user = await authClient.getUser()
+          if (user) {
+            const displayName = await getUserDisplayName(user)
+            setUserName(displayName)
+          }
+        } else {
+          setIsAuthenticated(false)
+          setUserName('')
         }
-      } else {
+      } catch (error) {
+        console.error('Auth state change error:', error)
         setIsAuthenticated(false)
         setUserName('')
       }
@@ -58,25 +104,51 @@ export default function AuthButton() {
   }, [])
 
   const handleLogout = async () => {
+    console.log('=== LOGOUT CLICKED ===')
     try {
+      console.log('Attempting to sign out...')
+      setIsDropdownOpen(false)
+
+      // Sign out from Supabase (global scope to clear all sessions)
       await authClient.signOut()
+      console.log('Sign out successful')
+
+      // Clear local state
       setIsAuthenticated(false)
       setUserName('')
-      setIsDropdownOpen(false)
-      router.push('/sign-in')
+
+      // Use window.location for a hard navigation to ensure all state is cleared
+      window.location.href = '/sign-in'
     } catch (error) {
       console.error('Logout error:', error)
+      alert('Failed to sign out: ' + error)
     }
   }
 
+  const toggleDropdown = () => {
+    setIsDropdownOpen(!isDropdownOpen)
+  }
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement
+      if (isDropdownOpen && !target.closest('.auth-dropdown-container')) {
+        setIsDropdownOpen(false)
+      }
+    }
+
+    document.addEventListener('click', handleClickOutside)
+    return () => document.removeEventListener('click', handleClickOutside)
+  }, [isDropdownOpen])
+
   if (isAuthenticated) {
     return (
-      <div
-        className="relative"
-        onMouseEnter={() => setIsDropdownOpen(true)}
-        onMouseLeave={() => setIsDropdownOpen(false)}
-      >
-        <button className="text-sm text-gray-700 hover:text-gray-900 cursor-pointer py-2">
+      <div className="relative auth-dropdown-container">
+        <button
+          onClick={toggleDropdown}
+          className="text-sm text-gray-700 hover:text-gray-900 cursor-pointer py-2"
+        >
           Welcome, {userName}
         </button>
 

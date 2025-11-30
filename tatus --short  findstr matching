@@ -1,0 +1,73 @@
+DESIGN_IMPROVEMENTS.md:8: trailing whitespace.
+[32m+[m[32m**Current:** Home page just redirects to sign-in[m[41m  [m
+DESIGN_IMPROVEMENTS.md:19: trailing whitespace.
+[32m+[m[32m**Current:** No dedicated page to view assignments[m[41m  [m
+DESIGN_IMPROVEMENTS.md:32: trailing whitespace.
+[32m+[m[32m**Current:** No visibility into application status[m[41m  [m
+DESIGN_IMPROVEMENTS.md:45: trailing whitespace.
+[32m+[m[32m**Current:** Compatibility calculation exists but no UI[m[41m  [m
+DESIGN_IMPROVEMENTS.md:59: trailing whitespace.
+[32m+[m[32m**Current:** No admin interface[m[41m  [m
+DESIGN_IMPROVEMENTS.md:77: trailing whitespace.
+[32m+[m[32m**Current:** Basic navigation menu[m[41m  [m
+DESIGN_IMPROVEMENTS.md:86: trailing whitespace.
+[32m+[m[32m**Current:** Long form, no progress indicator[m[41m  [m
+DESIGN_IMPROVEMENTS.md:97: trailing whitespace.
+[32m+[m[32m**Current:** Basic search in blocks page[m[41m  [m
+DESIGN_IMPROVEMENTS.md:108: trailing whitespace.
+[32m+[m[32m**Current:** Basic notifications in blocks page[m[41m  [m
+DESIGN_IMPROVEMENTS.md:121: trailing whitespace.
+[32m+[m[32m**Current:** No information about dorms[m[41m  [m
+DESIGN_IMPROVEMENTS.md:368: new blank line at EOF.
+next-navigation.d.ts:2: new blank line at EOF.
+src/app/admin/page.tsx:8: trailing whitespace.
+[32m+[m[32mimport {[m[41m [m
+src/app/admin/page.tsx:9: trailing whitespace.
+[32m+[m[32m  Users,[m[41m [m
+src/app/admin/page.tsx:10: trailing whitespace.
+[32m+[m[32m  Home,[m[41m [m
+src/app/admin/page.tsx:11: trailing whitespace.
+[32m+[m[32m  PlayCircle,[m[41m [m
+src/app/admin/page.tsx:331: new blank line at EOF.
+src/app/api/assignments/[studentId]/route.ts:119: new blank line at EOF.
+src/app/api/buildings/route.ts:53: trailing whitespace.
+[32m+[m[32m          occupancy_percentage: totalCapacity > 0[m[41m [m
+src/app/api/buildings/route.ts:54: trailing whitespace.
+[32m+[m[32m            ? Math.round((totalOccupied / totalCapacity) * 100)[m[41m [m
+src/app/api/buildings/route.ts:72: new blank line at EOF.
+src/app/api/rooms/route.ts:82: new blank line at EOF.
+src/app/api/students/[id]/route.ts:188: new blank line at EOF.
+src/app/assignment/page.tsx:10: trailing whitespace.
+[32m+[m[32mimport {[m[41m [m
+src/app/assignment/page.tsx:11: trailing whitespace.
+[32m+[m[32m  Home,[m[41m [m
+src/app/assignment/page.tsx:12: trailing whitespace.
+[32m+[m[32m  MapPin,[m[41m [m
+src/app/assignment/page.tsx:13: trailing whitespace.
+[32m+[m[32m  Users,[m[41m [m
+src/app/assignment/page.tsx:14: trailing whitespace.
+[32m+[m[32m  Phone,[m[41m [m
+src/app/assignment/page.tsx:277: trailing whitespace.
+[32m+[m[32m                        <a[m[41m [m
+src/app/assignment/page.tsx:317: new blank line at EOF.
+src/app/buildings/page.tsx:262: new blank line at EOF.
+src/app/compatibility/page.tsx:367: new blank line at EOF.
+src/app/dashboard/page.tsx:10: trailing whitespace.
+[32m+[m[32mimport {[m[41m [m
+src/app/dashboard/page.tsx:11: trailing whitespace.
+[32m+[m[32m  CheckCircle2,[m[41m [m
+src/app/dashboard/page.tsx:12: trailing whitespace.
+[32m+[m[32m  Clock,[m[41m [m
+src/app/dashboard/page.tsx:13: trailing whitespace.
+[32m+[m[32m  Home,[m[41m [m
+src/app/dashboard/page.tsx:14: trailing whitespace.
+[32m+[m[32m  FileText,[m[41m [m
+src/app/dashboard/page.tsx:15: trailing whitespace.
+[32m+[m[32m  Users,[m[41m [m
+src/app/dashboard/page.tsx:368: trailing whitespace.
+[32m+[m[32m                    {status.applicationStatus === 'Pending'[m[41m [m
+src/app/dashboard/page.tsx:369: trailing whitespace.
+[32m+[m[32m                      ? 'Your application is under review'[m[41m [m
+src/app/dashboard/page.tsx:381: new blank line at EOF.
+src/components/NavigationMenuApp.tsx:239: trailing whitespace.
+[32m+[m[41m    [m

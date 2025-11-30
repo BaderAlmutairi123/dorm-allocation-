@@ -76,39 +76,43 @@ export async function POST(request: NextRequest) {
     // Clean phone number (remove formatting for database storage)
     const cleanPhone = phone.replace(/\D/g, '');
 
-    // Insert into students table
-    // Your schema uses student_id as the primary key (UUID)
-    const studentInsertData: any = {
-      first_name: firstName,
-      last_name: lastName,
-      email: email,
-      phone: cleanPhone, // Store digits only
-      gender: gender,
-      year_level: year,
-      major: major || null,
+    // Convert year level from text to number (Freshman = 1, Sophomore = 2, etc.)
+    const yearLevelMap: { [key: string]: number } = {
+      'Freshman': 1,
+      'Sophomore': 2,
+      'Junior': 3,
+      'Senior': 4,
     }
+    const yearLevelNumber = yearLevelMap[year] || 1;
 
-    // If studentId is a valid UUID, use it as student_id; otherwise let it auto-generate
-    if (studentId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(studentId)) {
-      studentInsertData.student_id = studentId
-    }
-    
+    // Update existing student record (created during sign-up)
     const { data: studentData, error: studentError } = await supabase
       .from('students')
-      .insert(studentInsertData)
+      .update({
+        phone: cleanPhone,
+        gender: gender,
+        year_level: yearLevelNumber,
+        major: major || null,
+      })
+      .eq('student_id', studentId)
       .select()
 
     if (studentError) {
-      console.error('Error inserting student:', studentError)
+      console.error('Error updating student:', studentError)
       return NextResponse.json(
-        { error: 'Failed to create student record', details: studentError.message },
+        { error: 'Failed to update student record', details: studentError.message },
         { status: 500 }
       )
     }
 
-    // Get the student ID from the inserted record
-    const insertedStudent = studentData?.[0]
-    const studentIdValue = insertedStudent?.student_id || studentId
+    // Check if update was successful (record exists)
+    if (!studentData || studentData.length === 0) {
+      console.error('Student record not found for ID:', studentId)
+      return NextResponse.json(
+        { error: 'Your account setup is incomplete. Please sign out and create a new account.' },
+        { status: 404 }
+      )
+    }
 
     // Insert into student_preferences table if preferences are provided
     if (roomType || bedtime || noiseLevel || cleanlinessLevel || guestPolicy) {
