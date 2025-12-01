@@ -107,21 +107,35 @@ export default function AuthButton() {
     console.log('=== LOGOUT CLICKED ===')
     try {
       console.log('Attempting to sign out...')
-      setIsDropdownOpen(false)
 
       // Sign out from Supabase (global scope to clear all sessions)
       await authClient.signOut()
       console.log('Sign out successful')
 
-      // Clear local state
+      // Clear local state immediately
       setIsAuthenticated(false)
       setUserName('')
+      setIsDropdownOpen(false)
 
-      // Use window.location for a hard navigation to ensure all state is cleared
-      window.location.href = '/sign-in'
+      // Clear all Supabase session data from localStorage
+      localStorage.removeItem('supabase.auth.token')
+
+      // Force clear any cached auth state
+      await supabase.auth.signOut({ scope: 'global' })
+
+      console.log('Redirecting to sign-in page...')
+
+      // Use router for navigation first
+      router.push('/sign-in')
+
+      // Then do a hard reload to ensure all state is cleared
+      setTimeout(() => {
+        window.location.href = '/sign-in'
+      }, 100)
     } catch (error) {
       console.error('Logout error:', error)
-      alert('Failed to sign out: ' + error)
+      // Even if sign out fails, redirect to sign-in
+      window.location.href = '/sign-in'
     }
   }
 

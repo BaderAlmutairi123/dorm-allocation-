@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase/client'
+import { supabaseAdmin } from '@/lib/supabase/server'
 
 export async function POST(request: Request) {
   try {
@@ -41,8 +41,16 @@ export async function POST(request: Request) {
     }
     const yearLevelNumber = yearLevelMap[year] || 1;
 
+    // Check if supabaseAdmin is available
+    if (!supabaseAdmin) {
+      return NextResponse.json(
+        { error: 'Server configuration error. Please contact support.' },
+        { status: 500 }
+      )
+    }
+
     // Update existing student record (created during sign-up)
-    const { data: studentData, error: studentError } = await supabase
+    const { data: studentData, error: studentError } = await supabaseAdmin
       .from('students')
       .update({
         phone: cleanPhone,
@@ -72,7 +80,7 @@ export async function POST(request: Request) {
 
     // Insert into student_preferences table if preferences are provided
     if (roomType || bedtime || noiseLevel || cleanlinessLevel || guestPolicy) {
-      const { error: preferencesError } = await supabase
+      const { error: preferencesError } = await supabaseAdmin
         .from('student_preferences')
         .insert({
           student_id: studentId,
@@ -90,7 +98,7 @@ export async function POST(request: Request) {
     }
 
     // Create a pending room assignment
-    const { error: assignmentError } = await supabase
+    const { error: assignmentError } = await supabaseAdmin
       .from('room_assignments')
       .insert({
         student_id: studentId,
