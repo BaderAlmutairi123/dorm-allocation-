@@ -197,7 +197,7 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className={`border-2 ${status.profileComplete ? 'text-green-600 bg-green-50 border-green-200' : 'border-gray-200'}`}>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               {status.profileComplete ? (
@@ -209,7 +209,7 @@ export default function DashboardPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold">
+            <p className={`text-2xl font-bold ${status.profileComplete ? 'text-green-600' : ''}`}>
               {status.profileComplete ? 'Complete' : 'Incomplete'}
             </p>
             {!status.profileComplete && (
@@ -222,7 +222,7 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className={`border-2 ${status.preferencesComplete ? 'text-green-600 bg-green-50 border-green-200' : 'border-gray-200'}`}>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               {status.preferencesComplete ? (
@@ -234,7 +234,7 @@ export default function DashboardPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold">
+            <p className={`text-2xl font-bold ${status.preferencesComplete ? 'text-green-600' : ''}`}>
               {status.preferencesComplete ? 'Complete' : 'Incomplete'}
             </p>
             {!status.preferencesComplete && (
