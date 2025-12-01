@@ -79,13 +79,22 @@ export async function GET() {
       blocksCount = blocksCount1 || 0
     }
 
+    // Get pending students without blocks (for retroactive matching)
+    const { count: pendingWithoutBlocks, error: pendingWithoutBlocksError } = await supabaseAdmin
+      .from('room_assignments')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'Pending')
+      .is('block_id', null)
+
     return NextResponse.json({
       pendingStudents: pendingCount || 0,
       assignedStudents: assignedCount || 0,
       availableRooms: availableRoomsCount || 0,
       totalRooms: totalRoomsCount || 0,
       blocks: blocksCount || 0,
+      pendingWithoutBlocks: pendingWithoutBlocks || 0,
       canRunMatching: (pendingCount || 0) > 0 && (availableRoomsCount || 0) > 0,
+      canAutoMatchBlocks: (pendingWithoutBlocks || 0) > 0,
     })
   } catch (error: any) {
     console.error('Error getting matching status:', error)

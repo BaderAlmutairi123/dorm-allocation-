@@ -27,7 +27,6 @@ export interface StudentWithPreferences {
     guest_policy_preference: number | null
   } | null
 }
-
 export interface Room {
   id: string
   building_name: string

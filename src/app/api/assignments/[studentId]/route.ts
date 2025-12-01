@@ -3,10 +3,10 @@ import { createClient } from '@supabase/supabase-js'
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { studentId: string } }
+  { params }: { params: { student_id: string } }
 ) {
   try {
-    const { studentId } = params
+    const { student_id } = params
     const authHeader = request.headers.get('authorization')
     const token = authHeader?.replace('Bearer ', '')
 
@@ -23,7 +23,7 @@ export async function GET(
     const supabase = createClient(supabaseUrl, supabaseAnonKey, {
       global: {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
-      },
+      },  
       auth: {
         autoRefreshToken: false,
         persistSession: false,
@@ -33,7 +33,7 @@ export async function GET(
     // Verify authentication
     if (token) {
       const { data: { user }, error: authError } = await supabase.auth.getUser(token)
-      if (authError || !user || user.id !== studentId) {
+      if (authError || !user || user.id !== student_id) {
         return NextResponse.json(
           { error: 'Unauthorized' },
           { status: 401 }
@@ -45,7 +45,7 @@ export async function GET(
     const { data: assignment, error: assignmentError } = await supabase
       .from('room_assignments')
       .select('*, rooms(*, dorms(*))')
-      .eq('student_id', studentId)
+      .eq('student_id', student_id)
       .single()
 
     if (assignmentError) {
@@ -70,7 +70,7 @@ export async function GET(
         .select('student_id, students(first_name, last_name, email, major)')
         .eq('room_id', assignment.room_id)
         .eq('status', 'Confirmed')
-        .neq('student_id', studentId)
+          .neq('student_id', student_id)
 
       if (roommateAssignments) {
         roommates = roommateAssignments.map(ra => ({
