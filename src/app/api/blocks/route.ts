@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabaseServer } from '@/lib/supabase/server'
+import { createClient } from '@supabase/supabase-js'
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
 /**
  * GET /api/blocks
@@ -7,10 +10,38 @@ import { supabaseServer } from '@/lib/supabase/server'
  */
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await supabaseServer()
+    // Get auth token from cookies
+    const authCookie = request.cookies.get('sb-access-token')?.value 
+      || request.cookies.get('supabase-auth-token')?.value
+    
+    // Also try to get from Authorization header
+    const authHeader = request.headers.get('authorization')
+    const token = authHeader?.replace('Bearer ', '') || authCookie
+    
+    // Parse the auth cookie if it's JSON (Supabase stores session as JSON)
+    let accessToken = token
+    if (token && token.startsWith('[')) {
+      try {
+        const parsed = JSON.parse(token)
+        accessToken = parsed[0] // First element is access token
+      } catch (e) {
+        // Not JSON, use as-is
+      }
+    }
+    
+    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+      global: {
+        headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+      },
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    })
     
     // Get current user
     const { data: { user }, error: authError } = await supabase.auth.getUser()
+    
     if (authError || !user) {
       return NextResponse.json(
         { error: 'Unauthorized' },
@@ -108,7 +139,19 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await supabaseServer()
+    // Get auth token
+    const authHeader = request.headers.get('authorization')
+    const token = authHeader?.replace('Bearer ', '')
+    
+    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+      global: {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      },
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    })
     
     // Get current user
     const { data: { user }, error: authError } = await supabase.auth.getUser()

@@ -41,6 +41,20 @@ interface NotificationItem {
   timestamp: string;
 }
 
+interface ReceivedRequest {
+  request_id: number;
+  sender: {
+    student_id: string;
+    first_name: string;
+    last_name: string;
+    email: string;
+  };
+  block_code?: string;
+  message?: string;
+  status: string;
+  created_at: string;
+}
+
 type TabType = "block" | "roommates" | "notifications";
 
 export default function BlocksPage() {
@@ -57,6 +71,8 @@ export default function BlocksPage() {
   const [potentialRoommates, setPotentialRoommates] = useState<PotentialRoommate[]>([]);
   const [isLoadingRoommates, setIsLoadingRoommates] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [receivedRequests, setReceivedRequests] = useState<ReceivedRequest[]>([]);
+  const [isLoadingRequests, setIsLoadingRequests] = useState(false);
 
   // Set active tab from URL query parameter
   useEffect(() => {
@@ -75,35 +91,66 @@ export default function BlocksPage() {
       )
     : potentialRoommates;
 
-  const handleSendRequest = (roommate: PotentialRoommate) => {
+  const handleSendRequest = async (roommate: PotentialRoommate) => {
     const timestamp = new Date().toISOString();
 
-    if (!block) {
-      // No room created yet – log a notification indicating this
+    try {
+      const session = await authClient.getSession();
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+        ...(session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {}),
+      };
+
+      const response = await fetch('/api/roommate-requests', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          receiver_id: roommate.id,
+          block_code: block?.code || null,
+          message: block 
+            ? `Hi! I'd like you to join my block. Use code: ${block.code}`
+            : `Hi! Would you like to be roommates?`,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setNotifications((prev) => [
+          ...prev,
+          {
+            id: Date.now(),
+            roommateName: roommate.name,
+            message: `Failed to send request: ${data.error}`,
+            timestamp,
+          },
+        ]);
+      } else {
+        setNotifications((prev) => [
+          ...prev,
+          {
+            id: Date.now(),
+            roommateName: roommate.name,
+            roomCode: block?.code,
+            message: block
+              ? `Request sent to ${roommate.name} with block code ${block.code}`
+              : `Roommate request sent to ${roommate.name}`,
+            timestamp,
+          },
+        ]);
+      }
+    } catch (error: any) {
       setNotifications((prev) => [
         ...prev,
         {
           id: Date.now(),
           roommateName: roommate.name,
-          message: "No room created",
+          message: `Error: ${error.message || 'Failed to send request'}`,
           timestamp,
         },
       ]);
-      setActiveTab("notifications");
-      return;
     }
-
-    // Room exists – send invite code in notification
-    setNotifications((prev) => [
-      ...prev,
-      {
-        id: Date.now(),
-        roommateName: roommate.name,
-        roomCode: block.code,
-        message: `Invite code ${block.code} sent to ${roommate.name}`,
-        timestamp,
-      },
-    ]);
+    
     setActiveTab("notifications");
   };
 
@@ -135,7 +182,12 @@ export default function BlocksPage() {
             });
 
             // Load user's block
-            const blockResponse = await fetch('/api/blocks');
+            const session = await authClient.getSession();
+            const blockResponse = await fetch('/api/blocks', {
+              headers: session?.access_token ? {
+                'Authorization': `Bearer ${session.access_token}`
+              } : {}
+            });
             if (blockResponse.ok) {
               const blockData = await blockResponse.json();
               if (blockData.block) {
@@ -175,8 +227,14 @@ export default function BlocksPage() {
     setError(null);
 
     try {
+      const session = await authClient.getSession();
+      const headers: HeadersInit = session?.access_token 
+        ? { 'Authorization': `Bearer ${session.access_token}` } 
+        : {};
+
       const response = await fetch('/api/blocks', {
         method: 'POST',
+        headers,
       });
 
       const data = await response.json();
@@ -187,7 +245,7 @@ export default function BlocksPage() {
       }
 
       // Reload block data
-      const blockResponse = await fetch('/api/blocks');
+      const blockResponse = await fetch('/api/blocks', { headers });
       if (blockResponse.ok) {
         const blockData = await blockResponse.json();
         if (blockData.block) {
@@ -205,10 +263,16 @@ export default function BlocksPage() {
     setError(null);
 
     try {
+      const session = await authClient.getSession();
+      const authHeaders: HeadersInit = session?.access_token 
+        ? { 'Authorization': `Bearer ${session.access_token}` } 
+        : {};
+
       const response = await fetch('/api/blocks/join', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...authHeaders,
         },
         body: JSON.stringify({ code: joinCode.toUpperCase() }),
       });
@@ -221,7 +285,7 @@ export default function BlocksPage() {
       }
 
       // Reload block data
-      const blockResponse = await fetch('/api/blocks');
+      const blockResponse = await fetch('/api/blocks', { headers: authHeaders });
       if (blockResponse.ok) {
         const blockData = await blockResponse.json();
         if (blockData.block) {
@@ -247,8 +311,14 @@ export default function BlocksPage() {
     setError(null);
 
     try {
+      const session = await authClient.getSession();
+      const headers: HeadersInit = session?.access_token 
+        ? { 'Authorization': `Bearer ${session.access_token}` } 
+        : {};
+
       const response = await fetch(`/api/blocks/${block.id}`, {
         method: 'DELETE',
+        headers,
       });
 
       const data = await response.json();
@@ -266,18 +336,99 @@ export default function BlocksPage() {
     }
   };
 
+  // Load received requests when notifications tab is active
+  useEffect(() => {
+    if (activeTab === 'notifications' && !isLoadingRequests) {
+      setIsLoadingRequests(true);
+      const loadRequests = async () => {
+        try {
+          const session = await authClient.getSession();
+          const headers: HeadersInit = session?.access_token 
+            ? { 'Authorization': `Bearer ${session.access_token}` } 
+            : {};
+          
+          const response = await fetch('/api/roommate-requests', { headers });
+          if (response.ok) {
+            const data = await response.json();
+            setReceivedRequests(data.received?.filter((r: ReceivedRequest) => r.status === 'Pending') || []);
+          }
+        } catch (error) {
+          // Silently fail - table might not exist yet
+        } finally {
+          setIsLoadingRequests(false);
+        }
+      };
+      loadRequests();
+    }
+  }, [activeTab]);
+
+  const handleRespondToRequest = async (requestId: number, status: 'Accepted' | 'Declined') => {
+    try {
+      const session = await authClient.getSession();
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+        ...(session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {}),
+      };
+
+      const response = await fetch(`/api/roommate-requests/${requestId}`, {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify({ status }),
+      });
+
+      if (response.ok) {
+        // Remove from received requests
+        setReceivedRequests(prev => prev.filter(r => r.request_id !== requestId));
+        
+        // Add notification
+        const request = receivedRequests.find(r => r.request_id === requestId);
+        if (request) {
+          setNotifications(prev => [
+            ...prev,
+            {
+              id: Date.now(),
+              roommateName: `${request.sender.first_name} ${request.sender.last_name}`,
+              message: status === 'Accepted' 
+                ? `You accepted ${request.sender.first_name}'s roommate request!`
+                : `You declined ${request.sender.first_name}'s roommate request.`,
+              timestamp: new Date().toISOString(),
+            },
+          ]);
+        }
+
+        // Reload block data if accepted
+        if (status === 'Accepted') {
+          const blockResponse = await fetch('/api/blocks', { headers });
+          if (blockResponse.ok) {
+            const blockData = await blockResponse.json();
+            if (blockData.block) {
+              setBlock(blockData.block);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      setError('Failed to respond to request');
+    }
+  };
+
   // Load potential roommates when roommates tab is active
   useEffect(() => {
     if (activeTab === 'roommates' && !isLoadingRoommates) {
       setIsLoadingRoommates(true);
       const loadRoommates = async () => {
         try {
+          const session = await authClient.getSession();
+          const headers: HeadersInit = session?.access_token 
+            ? { 'Authorization': `Bearer ${session.access_token}` } 
+            : {};
+          
           const query = searchQuery.trim();
           const url = query 
             ? `/api/students/search?q=${encodeURIComponent(query)}&limit=20`
             : '/api/students/search?limit=20';
           
-          const response = await fetch(url);
+          const response = await fetch(url, { headers });
           if (response.ok) {
             const data = await response.json();
             setPotentialRoommates(data.students || []);
@@ -458,7 +609,7 @@ export default function BlocksPage() {
               <div>
                   <CardTitle>Your Block</CardTitle>
                   <CardDescription>
-                    {block.members.length} of {block.maxMembers} members
+                    {block.members?.length || 0} of {block.maxMembers || 4} members
                   </CardDescription>
                 </div>
                 <Button
@@ -540,7 +691,7 @@ export default function BlocksPage() {
                   ))}
 
                   {/* Empty Slots */}
-                  {[...Array(block.maxMembers - block.members.length)].map((_, index) => (
+                  {[...Array(Math.max(0, (block.maxMembers || 4) - (block.members?.length || 0)))].map((_, index) => (
                     <Card key={`empty-${index}`} className="border-2 border-dashed">
                   <CardContent className="pt-6">
                         <div className="flex items-center gap-4">
@@ -651,50 +802,108 @@ export default function BlocksPage() {
                 Notifications
               </CardTitle>
               <CardDescription>
-                View block invite notifications sent to other students.
+                View and respond to roommate requests.
               </CardDescription>
             </CardHeader>
-            <CardContent>
-              {notifications.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  No notifications yet. Send a roommate request to see it appear here.
-                </p>
-              ) : (
-                <div className="space-y-3">
-                  {notifications
-                    .slice()
-                    .reverse()
-                    .map((notification) => (
-                      <Card key={notification.id} className="border">
+            <CardContent className="space-y-6">
+              {/* Pending Requests */}
+              {receivedRequests.length > 0 && (
+                <div>
+                  <h3 className="text-lg font-semibold mb-3 text-primary">
+                    Pending Requests ({receivedRequests.length})
+                  </h3>
+                  <div className="space-y-3">
+                    {receivedRequests.map((request) => (
+                      <Card key={request.request_id} className="border-2 border-primary/20 bg-primary/5">
                         <CardContent className="py-4">
                           <div className="flex justify-between items-start gap-4">
-                            <div>
+                            <div className="flex-1">
                               <p className="font-semibold">
-                                {notification.roomCode
-                                  ? `Invite sent to ${notification.roommateName}`
-                                  : `Request for ${notification.roommateName}`}
+                                {request.sender.first_name} {request.sender.last_name}
                               </p>
                               <p className="text-sm text-muted-foreground">
-                                {notification.message}
-                                {notification.roomCode && (
-                                  <span className="ml-2 font-mono font-medium">
-                                    ({notification.roomCode})
-                                  </span>
-                                )}
+                                {request.sender.email}
                               </p>
+                              {request.message && (
+                                <p className="text-sm mt-2 italic">"{request.message}"</p>
+                              )}
+                              {request.block_code && (
+                                <p className="text-sm mt-1">
+                                  Block code: <span className="font-mono font-bold">{request.block_code}</span>
+                                </p>
+                              )}
                             </div>
-                            <span className="text-xs text-muted-foreground">
-                              {new Date(notification.timestamp).toLocaleTimeString([], {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}
-                            </span>
+                            <div className="flex gap-2">
+                              <Button
+                                size="sm"
+                                onClick={() => handleRespondToRequest(request.request_id, 'Accepted')}
+                              >
+                                Accept
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleRespondToRequest(request.request_id, 'Declined')}
+                              >
+                                Decline
+                              </Button>
+                            </div>
                           </div>
                         </CardContent>
                       </Card>
                     ))}
+                  </div>
                 </div>
               )}
+
+              {/* Activity Log */}
+              <div>
+                <h3 className="text-lg font-semibold mb-3">Activity Log</h3>
+                {notifications.length === 0 && receivedRequests.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    No notifications yet. Send a roommate request to see it appear here.
+                  </p>
+                ) : notifications.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    No recent activity.
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    {notifications
+                      .slice()
+                      .reverse()
+                      .map((notification) => (
+                        <Card key={notification.id} className="border">
+                          <CardContent className="py-4">
+                            <div className="flex justify-between items-start gap-4">
+                              <div>
+                                <p className="font-semibold">
+                                  {notification.roomCode
+                                    ? `Invite sent to ${notification.roommateName}`
+                                    : notification.roommateName}
+                                </p>
+                                <p className="text-sm text-muted-foreground">
+                                  {notification.message}
+                                  {notification.roomCode && (
+                                    <span className="ml-2 font-mono font-medium">
+                                      ({notification.roomCode})
+                                    </span>
+                                  )}
+                                </p>
+                              </div>
+                              <span className="text-xs text-muted-foreground">
+                                {new Date(notification.timestamp).toLocaleTimeString([], {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}
+                              </span>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))}
+                  </div>
+                )}
+              </div>
             </CardContent>
           </Card>
         )}

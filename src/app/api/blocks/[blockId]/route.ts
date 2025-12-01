@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabaseServer } from '@/lib/supabase/server'
+import { createClient } from '@supabase/supabase-js'
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
 /**
  * DELETE /api/blocks/[blockId]
@@ -7,10 +10,24 @@ import { supabaseServer } from '@/lib/supabase/server'
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { blockId: string } }
+  { params }: { params: Promise<{ blockId: string }> }
 ) {
   try {
-    const supabase = await supabaseServer()
+    const { blockId: blockIdStr } = await params
+    
+    // Get auth token
+    const authHeader = request.headers.get('authorization')
+    const token = authHeader?.replace('Bearer ', '')
+    
+    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+      global: {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      },
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    })
     
     // Get current user
     const { data: { user }, error: authError } = await supabase.auth.getUser()
@@ -21,7 +38,7 @@ export async function DELETE(
       )
     }
 
-    const blockId = parseInt(params.blockId)
+    const blockId = parseInt(blockIdStr)
 
     if (isNaN(blockId)) {
       return NextResponse.json(

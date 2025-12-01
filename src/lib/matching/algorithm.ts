@@ -157,11 +157,6 @@ async function getPendingStudents(): Promise<StudentWithPreferences[]> {
     .select('*')
     .eq('status', 'Pending')
 
-  console.log(`[getPendingStudents] Found ${assignments?.length || 0} pending assignments`)
-  if (assignError) {
-    console.error('[getPendingStudents] Error fetching assignments:', assignError)
-  }
-
   if (assignError || !assignments || assignments.length === 0) {
     return []
   }
@@ -171,21 +166,13 @@ async function getPendingStudents(): Promise<StudentWithPreferences[]> {
     .map(a => a.student_id)
     .filter((id): id is string => id !== null && id !== undefined)
 
-  console.log(`[getPendingStudents] Student IDs to fetch: ${studentIds.length}`)
-
   // Get student data
   const { data: students, error: studentsError } = await supabaseAdmin
     .from('students')
     .select('*')
     .in('student_id', studentIds)
 
-  console.log(`[getPendingStudents] Found ${students?.length || 0} students in students table`)
-  if (studentsError) {
-    console.error('[getPendingStudents] Error fetching students:', studentsError)
-  }
-
   if (studentsError || !students || students.length === 0) {
-    console.warn(`[getPendingStudents] No students found for IDs:`, studentIds.slice(0, 5))
     throw new Error(`Failed to fetch students: ${studentsError?.message || 'No students found'}`)
   }
 
@@ -424,10 +411,6 @@ export async function runMatchingAlgorithm(): Promise<{
       getBlocks(),
     ])
 
-    console.log(`[Matching] Found ${students.length} pending students`)
-    console.log(`[Matching] Found ${rooms.length} available rooms`)
-    console.log(`[Matching] Found ${blocks.size} blocks`)
-
     if (students.length === 0) {
       return {
         success: true,
@@ -468,9 +451,6 @@ export async function runMatchingAlgorithm(): Promise<{
         individualStudents.push(student)
       }
     })
-
-    console.log(`[Matching] ${blockGroups.size} block groups with students`)
-    console.log(`[Matching] ${individualStudents.length} individual students to match`)
 
     // Process blocks first (they need to be together)
     for (const [blockId, blockStudents] of blockGroups.entries()) {
@@ -529,8 +509,6 @@ export async function runMatchingAlgorithm(): Promise<{
 
     // Match individual students
     for (const [gender, genderStudents] of studentsByGender.entries()) {
-      console.log(`[Matching] Processing ${genderStudents.length} students with gender: ${gender}`)
-      
       // Separate students who want Single rooms (no roommate needed)
       const singleRoomStudents: StudentWithPreferences[] = []
       const sharedRoomStudents: StudentWithPreferences[] = []
@@ -544,15 +522,10 @@ export async function runMatchingAlgorithm(): Promise<{
         }
       })
       
-      console.log(`[Matching] ${singleRoomStudents.length} students want Single rooms`)
-      console.log(`[Matching] ${sharedRoomStudents.length} students want shared rooms`)
-      
       const assigned = new Set<string>()
       
       // Process Single room students first - no roommate matching needed
       for (const student of singleRoomStudents) {
-        console.log(`[Matching] Assigning Single room for ${student.first_name} ${student.last_name}`)
-        
         // Find available Single room
         let singleRooms = rooms.filter(room => {
           const currentOccupancy = occupancy.get(room.id) || (room.current_occupancy || 0)
@@ -561,22 +534,17 @@ export async function runMatchingAlgorithm(): Promise<{
           return hasSpace && isSingle
         })
         
-        console.log(`[Matching] Found ${singleRooms.length} available Single rooms`)
-        
         // If no Single rooms available, try any room with capacity 1-2
         if (singleRooms.length === 0) {
-          console.log(`[Matching] No Single rooms, trying small rooms`)
           singleRooms = rooms.filter(room => {
             const currentOccupancy = occupancy.get(room.id) || (room.current_occupancy || 0)
             const hasSpace = room.capacity > currentOccupancy
             return hasSpace && room.capacity <= 2
           })
-          console.log(`[Matching] Found ${singleRooms.length} small rooms`)
         }
         
         // Last resort: any available room
         if (singleRooms.length === 0) {
-          console.log(`[Matching] Falling back to any available room`)
           singleRooms = rooms.filter(room => {
             const currentOccupancy = occupancy.get(room.id) || (room.current_occupancy || 0)
             return room.capacity > currentOccupancy
@@ -585,7 +553,6 @@ export async function runMatchingAlgorithm(): Promise<{
         
         if (singleRooms.length > 0) {
           const selectedRoom = singleRooms[0]
-          console.log(`[Matching] Selected room: ${selectedRoom.id} (${selectedRoom.room_number}) in ${selectedRoom.building_name}`)
           
           if (!selectedRoom.id || selectedRoom.id === undefined) {
             errors.push(`Selected room has invalid ID for student ${student.student_id}`)
@@ -600,13 +567,10 @@ export async function runMatchingAlgorithm(): Promise<{
             room_id: selectedRoom.id,
             block_id: null,
           }
-          console.log(`[Matching] Adding Single room match:`, matchData)
           matches.push(matchData)
           assigned.add(student.student_id)
           occupancy.set(selectedRoom.id, currentOccupancy + 1)
-          console.log(`[Matching] Total matches so far: ${matches.length}`)
         } else {
-          console.log(`[Matching] No rooms available for ${student.first_name}`)
           unmatched.push(student.student_id)
         }
       }
@@ -655,7 +619,6 @@ export async function runMatchingAlgorithm(): Promise<{
           
           // Find suitable room
           const roomTypePreference = student.preferences?.preferred_room_type
-          console.log(`[Matching] Student ${student.first_name} ${student.last_name}: room type preference = ${roomTypePreference}`)
           
           let suitableRooms = rooms.filter(room => {
             const currentOccupancy = occupancy.get(room.id) || (room.current_occupancy || 0)
@@ -695,7 +658,6 @@ export async function runMatchingAlgorithm(): Promise<{
           
           if (suitableRooms.length > 0) {
             const selectedRoom = suitableRooms[0]
-            console.log(`[Matching] Selected room: ${selectedRoom.id} (${selectedRoom.room_number}) in ${selectedRoom.building_name}`)
             
             if (!selectedRoom.id || selectedRoom.id === undefined) {
               errors.push(`Selected room has invalid ID for student ${student.student_id}`)
@@ -714,11 +676,9 @@ export async function runMatchingAlgorithm(): Promise<{
               compatibility_score: bestMatch ? bestScore : undefined,
               matched_with: bestMatch ? [bestMatch.student_id] : undefined,
             }
-            console.log(`[Matching] Adding match:`, matchData)
             matches.push(matchData)
             assigned.add(student.student_id)
             occupancy.set(selectedRoom.id, currentOccupancy + 1)
-            console.log(`[Matching] Total matches so far: ${matches.length}`)
             
             // If we have a good match and room has space, assign them together
             if (bestMatch && remaining >= 2 && bestScore >= 60) {
@@ -739,12 +699,9 @@ export async function runMatchingAlgorithm(): Promise<{
       }
     }
 
-    console.log(`[Matching] Total matches before validation: ${matches.length}`)
-    
     // Update room assignments in database
     // Filter out matches with invalid room_id before processing
     const validMatches = matches.filter(m => {
-      console.log(`[Matching] Validating match: student=${m.student_id}, room_id=${m.room_id}, type=${typeof m.room_id}`)
       if (!m.room_id || m.room_id === undefined || m.room_id === null) {
         errors.push(`Invalid room_id for student ${m.student_id}: room_id is undefined`)
         unmatched.push(m.student_id)
@@ -752,8 +709,6 @@ export async function runMatchingAlgorithm(): Promise<{
       }
       return true
     })
-    
-    console.log(`[Matching] Valid matches after filtering: ${validMatches.length}`)
 
     for (const match of validMatches) {
       const updateData: any = {
@@ -801,8 +756,6 @@ export async function runMatchingAlgorithm(): Promise<{
         }
       }
 
-      console.log(`[Matching] Updating room_assignments for student ${match.student_id} with:`, updateDataFinal)
-      
       const { data: updateResult, error: updateError } = await supabaseAdmin
         .from('room_assignments')
         .update(updateDataFinal)
@@ -810,15 +763,8 @@ export async function runMatchingAlgorithm(): Promise<{
         .eq('status', 'Pending')
         .select()
 
-      console.log(`[Matching] Update result:`, updateResult, 'Error:', updateError)
-
       if (updateError) {
         errors.push(`Failed to assign room for student ${match.student_id}: ${updateError.message}`)
-        console.error('Room assignment update error:', updateError, 'Data:', updateDataFinal)
-      } else if (!updateResult || updateResult.length === 0) {
-        console.warn(`[Matching] No rows updated for student ${match.student_id} - student may not have Pending status`)
-      } else {
-        console.log(`[Matching] Successfully updated assignment for student ${match.student_id}`)
       }
     }
 
@@ -829,13 +775,17 @@ export async function runMatchingAlgorithm(): Promise<{
         continue // Skip undefined/null room IDs
       }
 
-      const room = rooms.find(r => r.id === roomId)
+      // Find room by 'room.id' (column name has a dot)
+      const room = rooms.find(r => {
+        const rId = (r as any)['room.id'] || r.id
+        return rId === roomId || rId === parseInt(String(roomId))
+      })
+      
       if (room) {
         const newOccupancy = occupancy.get(roomId) || (room.current_occupancy || 0)
         
         // Update current_occupancy in rooms table
         // Column name is 'room.id' (with dot) - match by dorm_id and room_number instead
-        // This avoids the issue with column names containing dots
         const { error } = await supabaseAdmin
           .from('rooms')
           .update({ current_occupancy: newOccupancy })
@@ -844,7 +794,6 @@ export async function runMatchingAlgorithm(): Promise<{
 
         if (error) {
           errors.push(`Failed to update room ${roomId} occupancy: ${error.message}`)
-          console.error('Room occupancy update error:', error, 'Room ID:', roomId, 'Dorm ID:', room.dorm_id, 'Room Number:', room.room_number, 'New occupancy:', newOccupancy)
         }
       } else {
         errors.push(`Room not found for ID: ${roomId}`)

@@ -71,11 +71,9 @@ export async function GET(
       let room = null
       
       // First try: use the column name with quotes via RPC or raw query
-      const { data: rooms, error: roomError } = await supabase
+      const { data: rooms } = await supabase
         .from('rooms')
         .select('*')
-      
-      console.log('All rooms count:', rooms?.length, 'Looking for room_id:', assignment.room_id)
       
       // Find the room by matching the room.id column
       if (rooms) {
@@ -85,29 +83,21 @@ export async function GET(
         })
       }
       
-      console.log('Found room:', room)
-      
       if (room) {
         roomData = room
         
         // Fetch dorm data
         const dormId = room.dorm_id
         if (dormId) {
-          // First, let's see what dorms exist
           const { data: allDorms } = await supabase
             .from('dorms')
             .select('*')
-          
-          console.log('All dorms:', allDorms)
-          console.log('Looking for dorm_id:', dormId)
           
           // Try to find the dorm - the ID column might have a different name
           const dorm = allDorms?.find((d: any) => {
             const id = d.dorm_id || d['dorm.id'] || d.id
             return id === dormId || id === parseInt(dormId)
           })
-          
-          console.log('Found dorm:', dorm)
           
           if (dorm) {
             dormData = dorm
