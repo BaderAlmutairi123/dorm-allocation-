@@ -152,105 +152,59 @@ async function getPendingStudents(): Promise<StudentWithPreferences[]> {
   }
 
   // Get all students with pending room assignments
-  // Try both student_id and student_uuid field names
-  let assignments: any[] | null = null
-  let assignError: any = null
-
-  const { data: assignments1, error: error1 } = await supabaseAdmin
+  const { data: assignments, error: assignError } = await supabaseAdmin
     .from('room_assignments')
     .select('*')
     .eq('status', 'Pending')
 
-  if (error1) {
-    assignError = error1
-  } else {
-    assignments = assignments1
+  console.log(`[getPendingStudents] Found ${assignments?.length || 0} pending assignments`)
+  if (assignError) {
+    console.error('[getPendingStudents] Error fetching assignments:', assignError)
   }
 
   if (assignError || !assignments || assignments.length === 0) {
     return []
   }
 
-  // Extract student IDs - try both field names
+  // Extract student IDs
   const studentIds = assignments
-    .map(a => a.student_uuid || a.student_id)
+    .map(a => a.student_id)
     .filter((id): id is string => id !== null && id !== undefined)
 
-  // Get student data - your schema uses 'student_uuid' as primary key
+  console.log(`[getPendingStudents] Student IDs to fetch: ${studentIds.length}`)
+
+  // Get student data
   const { data: students, error: studentsError } = await supabaseAdmin
     .from('students')
     .select('*')
-    .in('student_uuid', studentIds)
+    .in('student_id', studentIds)
 
-  // If that fails, try with 'student_id' or 'id' (for compatibility)
-  let studentsData = students
+  console.log(`[getPendingStudents] Found ${students?.length || 0} students in students table`)
+  if (studentsError) {
+    console.error('[getPendingStudents] Error fetching students:', studentsError)
+  }
+
   if (studentsError || !students || students.length === 0) {
-    const { data: altStudents1, error: altError1 } = await supabaseAdmin
-      .from('students')
-      .select('*')
-      .in('student_id', studentIds)
-
-    if (altError1) {
-      const { data: altStudents2, error: altError2 } = await supabaseAdmin
-        .from('students')
-        .select('*')
-        .in('id', studentIds)
-
-      if (altError2) {
-        throw new Error(`Failed to fetch students: ${studentsError?.message || altError1?.message || altError2.message}`)
-      }
-
-      if (altStudents2 && altStudents2.length > 0) {
-        studentsData = altStudents2.map(s => ({
-          ...s,
-          student_uuid: s.student_uuid || s.student_id || s.id,
-        }))
-      }
-    } else {
-      if (altStudents1 && altStudents1.length > 0) {
-        studentsData = altStudents1.map(s => ({
-          ...s,
-          student_uuid: s.student_uuid || s.student_id || s.id,
-        }))
-      }
-    }
+    console.warn(`[getPendingStudents] No students found for IDs:`, studentIds.slice(0, 5))
+    throw new Error(`Failed to fetch students: ${studentsError?.message || 'No students found'}`)
   }
 
-  if (!studentsData || studentsData.length === 0) {
-    return []
-  }
-
-  // Get preferences for all students - your schema uses student_uuid
+  // Get preferences for all students
   const { data: preferences, error: prefError } = await supabaseAdmin
     .from('student_preferences')
     .select('*')
-    .in('student_uuid', studentIds)
+    .in('student_id', studentIds)
 
-  let preferencesData = preferences
   if (prefError) {
-    // Try with student_id for compatibility
-    const { data: prefAlt, error: prefAltError } = await supabaseAdmin
-      .from('student_preferences')
-      .select('*')
-      .in('student_id', studentIds)
-
-    if (!prefAltError && prefAlt) {
-      preferencesData = prefAlt
-    } else {
-      console.warn(`Failed to fetch preferences: ${prefError.message}`)
-    }
+    console.warn(`Failed to fetch preferences: ${prefError.message}`)
   }
 
   // Combine students with their preferences
-  return studentsData.map(student => {
-    // Your schema uses student_uuid as the primary key
-    const studentId = student.student_uuid || student.student_id || student.id
-    const studentPref = preferencesData?.find(p => 
-      (p.student_uuid === studentId) || (p.student_id === studentId)
-    ) || null
+  return students.map(student => {
+    const studentPref = preferences?.find(p => p.student_id === student.student_id) || null
     
     return {
-      student_id: studentId,
+      student_id: student.student_id,
       first_name: student.first_name,
       last_name: student.last_name,
       email: student.email,
@@ -286,20 +240,37 @@ async function getAvailableRooms(): Promise<Room[]> {
     return []
   }
 
-  // Filter rooms where current_occupancy < max_capacity
+  // Filter rooms where current_occupancy < max_capacity and room has valid ID
+  // Handle column name 'room.id' (with dot) - Supabase returns it as 'room.id' property
   return rooms
-    .filter(room => (room.current_occupancy || 0) < (room.max_capacity || 0))
-    .map(room => ({
-      id: String(room.id), // Convert to string for consistency
-      building_name: room.dorm_id ? `Dorm ${room.dorm_id}` : 'Unknown', // Use dorm_id as building reference
-      room_number: room.room_number,
-      capacity: room.max_capacity,
-      room_type: room.room_type?.toLowerCase() || 'double', // Normalize to lowercase
-      floor: room.floor_number,
-      is_available: true, // All returned rooms are available
-      dorm_id: room.dorm_id, // Store dorm_id for reference
-      current_occupancy: room.current_occupancy || 0,
-    }))
+    .filter(room => {
+      // Get ID - try both 'room.id' (with dot) and 'id' (without dot)
+      const roomId = (room as any)['room.id'] || (room as any).id
+      
+      // Ensure room has valid ID
+      if (!roomId || roomId === null || roomId === undefined) {
+        console.warn('Room missing ID:', room)
+        return false
+      }
+      return (room.current_occupancy || 0) < (room.max_capacity || 0)
+    })
+    .map(room => {
+      // Get ID - try both 'room.id' (with dot) and 'id' (without dot)
+      const roomId = (room as any)['room.id'] || (room as any).id
+      
+      return {
+        id: String(roomId), // Convert to string for consistency
+        building_name: room.dorm_id ? `Dorm ${room.dorm_id}` : 'Unknown', // Use dorm_id as building reference
+        room_number: room.room_number,
+        capacity: room.max_capacity,
+        room_type: room.room_type?.toLowerCase() || 'double', // Normalize to lowercase
+        floor: room.floor_number,
+        is_available: true, // All returned rooms are available
+        dorm_id: room.dorm_id, // Store dorm_id for reference
+        current_occupancy: room.current_occupancy || 0,
+      }
+    })
+    .filter(room => room.id && room.id !== 'undefined' && room.id !== 'null') // Additional safety check
 }
 
 /**
@@ -332,13 +303,15 @@ async function getRoomOccupancy(): Promise<Map<string, number>> {
   }
 
   // Also get current_occupancy from rooms table (more accurate)
+  // Select 'room.id' column (with dot) as that's the actual column name
   const { data: rooms, error: roomsError } = await supabaseAdmin
     .from('rooms')
-    .select('id, current_occupancy')
+    .select('room.id, current_occupancy')
 
   if (!roomsError && rooms) {
-    rooms.forEach(room => {
-      const roomId = String(room.id)
+    rooms.forEach((room: any) => {
+      // Get ID - try both 'room.id' (with dot) and 'id' (without dot)
+      const roomId = String(room['room.id'] || room.id)
       const roomOccupancy = room.current_occupancy || 0
       // Use the higher value (assignments count or room's current_occupancy)
       const existing = occupancy.get(roomId) || 0
@@ -409,7 +382,7 @@ async function getBlocks(): Promise<Map<string, string[]>> {
     if (filteredMembers) {
       filteredMembers.forEach(member => {
         const blockId = String(member.block_id || member.id)
-        const studentId = member.student_uuid || member.student_id
+        const studentId = member.student_id
         if (studentId) {
           const existing = blockMap.get(blockId) || []
           existing.push(studentId)
@@ -450,6 +423,10 @@ export async function runMatchingAlgorithm(): Promise<{
       getRoomOccupancy(),
       getBlocks(),
     ])
+
+    console.log(`[Matching] Found ${students.length} pending students`)
+    console.log(`[Matching] Found ${rooms.length} available rooms`)
+    console.log(`[Matching] Found ${blocks.size} blocks`)
 
     if (students.length === 0) {
       return {
@@ -492,6 +469,9 @@ export async function runMatchingAlgorithm(): Promise<{
       }
     })
 
+    console.log(`[Matching] ${blockGroups.size} block groups with students`)
+    console.log(`[Matching] ${individualStudents.length} individual students to match`)
+
     // Process blocks first (they need to be together)
     for (const [blockId, blockStudents] of blockGroups.entries()) {
       const totalSize = blockStudents.length
@@ -502,7 +482,19 @@ export async function runMatchingAlgorithm(): Promise<{
         return room.capacity >= currentOccupancy + totalSize
       })
 
-      if (suitableRoom) {
+      if (suitableRoom && suitableRoom.id) {
+        // Validate room has valid ID
+        if (!suitableRoom.id || suitableRoom.id === undefined) {
+          errors.push(`Suitable room for block ${blockId} has invalid ID`)
+          blockStudents.forEach(student => {
+            unmatched.push(student.student_id)
+          })
+          continue
+        }
+
+        // Get current occupancy before assigning
+        const currentOccupancy = occupancy.get(suitableRoom.id) || (suitableRoom.current_occupancy || 0)
+        
         // Assign all block members to the same room
         blockStudents.forEach(student => {
           matches.push({
@@ -510,8 +502,10 @@ export async function runMatchingAlgorithm(): Promise<{
             room_id: suitableRoom.id,
             block_id: blockId,
           })
-          occupancy.set(suitableRoom.id, (occupancy.get(suitableRoom.id) || 0) + 1)
         })
+
+        // Update occupancy for the entire block at once
+        occupancy.set(suitableRoom.id, currentOccupancy + totalSize)
 
         // Room occupancy will be updated later in the batch update
       } else {
@@ -535,123 +529,233 @@ export async function runMatchingAlgorithm(): Promise<{
 
     // Match individual students
     for (const [gender, genderStudents] of studentsByGender.entries()) {
-      // Calculate compatibility matrix
-      const compatibilityMatrix = new Map<string, Map<string, CompatibilityScore>>()
+      console.log(`[Matching] Processing ${genderStudents.length} students with gender: ${gender}`)
       
-      for (let i = 0; i < genderStudents.length; i++) {
-        for (let j = i + 1; j < genderStudents.length; j++) {
-          const score = calculateCompatibility(genderStudents[i], genderStudents[j])
-          if (!compatibilityMatrix.has(score.student1_id)) {
-            compatibilityMatrix.set(score.student1_id, new Map())
-          }
-          compatibilityMatrix.get(score.student1_id)!.set(score.student2_id, score)
+      // Separate students who want Single rooms (no roommate needed)
+      const singleRoomStudents: StudentWithPreferences[] = []
+      const sharedRoomStudents: StudentWithPreferences[] = []
+      
+      genderStudents.forEach(student => {
+        const pref = student.preferences?.preferred_room_type?.toLowerCase()
+        if (pref === 'single') {
+          singleRoomStudents.push(student)
+        } else {
+          sharedRoomStudents.push(student)
         }
-      }
-
-      // Sort students by preference (those with preferences first)
-      const sortedStudents = [...genderStudents].sort((a, b) => {
-        const aHasPrefs = a.preferences ? 1 : 0
-        const bHasPrefs = b.preferences ? 1 : 0
-        return bHasPrefs - aHasPrefs
       })
-
+      
+      console.log(`[Matching] ${singleRoomStudents.length} students want Single rooms`)
+      console.log(`[Matching] ${sharedRoomStudents.length} students want shared rooms`)
+      
       const assigned = new Set<string>()
-
-      // Try to match students in pairs/groups
-      for (const student of sortedStudents) {
-        if (assigned.has(student.student_id)) continue
-
-        // Find best match
-        let bestMatch: StudentWithPreferences | null = null
-        let bestScore = 0
-
-        for (const candidate of sortedStudents) {
-          if (
-            candidate.student_id === student.student_id ||
-            assigned.has(candidate.student_id)
-          ) {
-            continue
-          }
-
-          const score = compatibilityMatrix.get(student.student_id)?.get(candidate.student_id)
-          if (score && score.score > bestScore) {
-            bestScore = score.score
-            bestMatch = candidate
-          }
-        }
-
-        // Find suitable room
-        const roomTypePreference = student.preferences?.preferred_room_type
-        let suitableRooms = rooms.filter(room => {
+      
+      // Process Single room students first - no roommate matching needed
+      for (const student of singleRoomStudents) {
+        console.log(`[Matching] Assigning Single room for ${student.first_name} ${student.last_name}`)
+        
+        // Find available Single room
+        let singleRooms = rooms.filter(room => {
           const currentOccupancy = occupancy.get(room.id) || (room.current_occupancy || 0)
           const hasSpace = room.capacity > currentOccupancy
+          const isSingle = room.room_type?.toLowerCase() === 'single'
+          return hasSpace && isSingle
+        })
+        
+        console.log(`[Matching] Found ${singleRooms.length} available Single rooms`)
+        
+        // If no Single rooms available, try any room with capacity 1-2
+        if (singleRooms.length === 0) {
+          console.log(`[Matching] No Single rooms, trying small rooms`)
+          singleRooms = rooms.filter(room => {
+            const currentOccupancy = occupancy.get(room.id) || (room.current_occupancy || 0)
+            const hasSpace = room.capacity > currentOccupancy
+            return hasSpace && room.capacity <= 2
+          })
+          console.log(`[Matching] Found ${singleRooms.length} small rooms`)
+        }
+        
+        // Last resort: any available room
+        if (singleRooms.length === 0) {
+          console.log(`[Matching] Falling back to any available room`)
+          singleRooms = rooms.filter(room => {
+            const currentOccupancy = occupancy.get(room.id) || (room.current_occupancy || 0)
+            return room.capacity > currentOccupancy
+          })
+        }
+        
+        if (singleRooms.length > 0) {
+          const selectedRoom = singleRooms[0]
+          console.log(`[Matching] Selected room: ${selectedRoom.id} (${selectedRoom.room_number}) in ${selectedRoom.building_name}`)
           
-          // If student has room type preference, try to match it
-          // Your schema uses "Double", "Single", "Suite" (capitalized)
-          if (roomTypePreference && hasSpace) {
-            // Normalize both to lowercase for comparison
-            const roomTypeLower = room.room_type?.toLowerCase()
-            const prefTypeLower = roomTypePreference.toLowerCase()
-            return roomTypeLower === prefTypeLower || !roomTypePreference
+          if (!selectedRoom.id || selectedRoom.id === undefined) {
+            errors.push(`Selected room has invalid ID for student ${student.student_id}`)
+            unmatched.push(student.student_id)
+            continue
           }
           
-          return hasSpace
-        })
-
-        // Sort by capacity (prefer rooms that fit exactly)
-        suitableRooms.sort((a, b) => {
-          const aOccupancy = occupancy.get(a.id) || (a.current_occupancy || 0)
-          const bOccupancy = occupancy.get(b.id) || (b.current_occupancy || 0)
-          const aRemaining = a.capacity - aOccupancy
-          const bRemaining = b.capacity - bOccupancy
-          
-          // If we have a match, prefer rooms that fit both
-          if (bestMatch) {
-            const aFitsBoth = aRemaining >= 2
-            const bFitsBoth = bRemaining >= 2
-            if (aFitsBoth !== bFitsBoth) return aFitsBoth ? -1 : 1
-          }
-          
-          return aRemaining - bRemaining
-        })
-
-        if (suitableRooms.length > 0) {
-          const selectedRoom = suitableRooms[0]
           const currentOccupancy = occupancy.get(selectedRoom.id) || (selectedRoom.current_occupancy || 0)
-          const remaining = selectedRoom.capacity - currentOccupancy
-
-          // Assign student
-          matches.push({
+          
+          const matchData = {
             student_id: student.student_id,
             room_id: selectedRoom.id,
             block_id: null,
-            compatibility_score: bestMatch ? bestScore : undefined,
-            matched_with: bestMatch ? [bestMatch.student_id] : undefined,
-          })
+          }
+          console.log(`[Matching] Adding Single room match:`, matchData)
+          matches.push(matchData)
           assigned.add(student.student_id)
           occupancy.set(selectedRoom.id, currentOccupancy + 1)
-
-          // If we have a good match and room has space, assign them together
-          if (bestMatch && remaining >= 2 && bestScore >= 60) {
-            matches.push({
-              student_id: bestMatch.student_id,
+          console.log(`[Matching] Total matches so far: ${matches.length}`)
+        } else {
+          console.log(`[Matching] No rooms available for ${student.first_name}`)
+          unmatched.push(student.student_id)
+        }
+      }
+      
+      // Now process shared room students with compatibility matching
+      if (sharedRoomStudents.length > 0) {
+        // Calculate compatibility matrix for shared room students
+        const compatibilityMatrix = new Map<string, Map<string, CompatibilityScore>>()
+        
+        for (let i = 0; i < sharedRoomStudents.length; i++) {
+          for (let j = i + 1; j < sharedRoomStudents.length; j++) {
+            const score = calculateCompatibility(sharedRoomStudents[i], sharedRoomStudents[j])
+            if (!compatibilityMatrix.has(score.student1_id)) {
+              compatibilityMatrix.set(score.student1_id, new Map())
+            }
+            compatibilityMatrix.get(score.student1_id)!.set(score.student2_id, score)
+          }
+        }
+        
+        // Sort students by preference (those with preferences first)
+        const sortedStudents = [...sharedRoomStudents].sort((a, b) => {
+          const aHasPrefs = a.preferences ? 1 : 0
+          const bHasPrefs = b.preferences ? 1 : 0
+          return bHasPrefs - aHasPrefs
+        })
+        
+        // Try to match students in pairs/groups
+        for (const student of sortedStudents) {
+          if (assigned.has(student.student_id)) continue
+          
+          // Find best match
+          let bestMatch: StudentWithPreferences | null = null
+          let bestScore = 0
+          
+          for (const candidate of sortedStudents) {
+            if (candidate.student_id === student.student_id || assigned.has(candidate.student_id)) {
+              continue
+            }
+            
+            const score = compatibilityMatrix.get(student.student_id)?.get(candidate.student_id)
+            if (score && score.score > bestScore) {
+              bestScore = score.score
+              bestMatch = candidate
+            }
+          }
+          
+          // Find suitable room
+          const roomTypePreference = student.preferences?.preferred_room_type
+          console.log(`[Matching] Student ${student.first_name} ${student.last_name}: room type preference = ${roomTypePreference}`)
+          
+          let suitableRooms = rooms.filter(room => {
+            const currentOccupancy = occupancy.get(room.id) || (room.current_occupancy || 0)
+            const hasSpace = room.capacity > currentOccupancy
+            if (!hasSpace) return false
+            
+            if (roomTypePreference) {
+              const roomTypeLower = room.room_type?.toLowerCase()
+              const prefTypeLower = roomTypePreference.toLowerCase()
+              return roomTypeLower === prefTypeLower
+            }
+            return true
+          })
+          
+          // Fallback to any room with space
+          if (suitableRooms.length === 0) {
+            suitableRooms = rooms.filter(room => {
+              const currentOccupancy = occupancy.get(room.id) || (room.current_occupancy || 0)
+              return room.capacity > currentOccupancy
+            })
+          }
+          
+          // Sort by capacity
+          suitableRooms.sort((a, b) => {
+            const aOccupancy = occupancy.get(a.id) || (a.current_occupancy || 0)
+            const bOccupancy = occupancy.get(b.id) || (b.current_occupancy || 0)
+            const aRemaining = a.capacity - aOccupancy
+            const bRemaining = b.capacity - bOccupancy
+            
+            if (bestMatch) {
+              const aFitsBoth = aRemaining >= 2
+              const bFitsBoth = bRemaining >= 2
+              if (aFitsBoth !== bFitsBoth) return aFitsBoth ? -1 : 1
+            }
+            return aRemaining - bRemaining
+          })
+          
+          if (suitableRooms.length > 0) {
+            const selectedRoom = suitableRooms[0]
+            console.log(`[Matching] Selected room: ${selectedRoom.id} (${selectedRoom.room_number}) in ${selectedRoom.building_name}`)
+            
+            if (!selectedRoom.id || selectedRoom.id === undefined) {
+              errors.push(`Selected room has invalid ID for student ${student.student_id}`)
+              unmatched.push(student.student_id)
+              continue
+            }
+            
+            const currentOccupancy = occupancy.get(selectedRoom.id) || (selectedRoom.current_occupancy || 0)
+            const remaining = selectedRoom.capacity - currentOccupancy
+            
+            // Assign student
+            const matchData = {
+              student_id: student.student_id,
               room_id: selectedRoom.id,
               block_id: null,
-              compatibility_score: bestScore,
-              matched_with: [student.student_id],
-            })
-            assigned.add(bestMatch.student_id)
-            occupancy.set(selectedRoom.id, currentOccupancy + 2)
+              compatibility_score: bestMatch ? bestScore : undefined,
+              matched_with: bestMatch ? [bestMatch.student_id] : undefined,
+            }
+            console.log(`[Matching] Adding match:`, matchData)
+            matches.push(matchData)
+            assigned.add(student.student_id)
+            occupancy.set(selectedRoom.id, currentOccupancy + 1)
+            console.log(`[Matching] Total matches so far: ${matches.length}`)
+            
+            // If we have a good match and room has space, assign them together
+            if (bestMatch && remaining >= 2 && bestScore >= 60) {
+              matches.push({
+                student_id: bestMatch.student_id,
+                room_id: selectedRoom.id,
+                block_id: null,
+                compatibility_score: bestScore,
+                matched_with: [student.student_id],
+              })
+              assigned.add(bestMatch.student_id)
+              occupancy.set(selectedRoom.id, currentOccupancy + 2)
+            }
+          } else {
+            unmatched.push(student.student_id)
           }
-        } else {
-          unmatched.push(student.student_id)
         }
       }
     }
 
+    console.log(`[Matching] Total matches before validation: ${matches.length}`)
+    
     // Update room assignments in database
-    for (const match of matches) {
-      // Update room assignment - try both student_id and student_uuid
+    // Filter out matches with invalid room_id before processing
+    const validMatches = matches.filter(m => {
+      console.log(`[Matching] Validating match: student=${m.student_id}, room_id=${m.room_id}, type=${typeof m.room_id}`)
+      if (!m.room_id || m.room_id === undefined || m.room_id === null) {
+        errors.push(`Invalid room_id for student ${m.student_id}: room_id is undefined`)
+        unmatched.push(m.student_id)
+        return false
+      }
+      return true
+    })
+    
+    console.log(`[Matching] Valid matches after filtering: ${validMatches.length}`)
+
+    for (const match of validMatches) {
       const updateData: any = {
         room_id: match.room_id,
         status: 'Confirmed',
@@ -662,69 +766,94 @@ export async function runMatchingAlgorithm(): Promise<{
         updateData.block_id = match.block_id
       }
 
-      // Your schema uses student_uuid and integer room_id/block_id
-      // Convert room_id to integer if it's a string
-      const updateDataFinal = {
-        ...updateData,
-        room_id: typeof updateData.room_id === 'string' ? parseInt(updateData.room_id) : updateData.room_id,
-        block_id: updateData.block_id !== null && updateData.block_id !== undefined
-          ? (typeof updateData.block_id === 'string' ? parseInt(updateData.block_id) : updateData.block_id)
-          : null,
+      // Convert room_id to integer if it's a string (room.id is stored as integer in DB)
+      let roomIdInt: number
+      if (typeof updateData.room_id === 'string') {
+        roomIdInt = parseInt(updateData.room_id, 10)
+        if (isNaN(roomIdInt)) {
+          errors.push(`Invalid room_id for student ${match.student_id}: ${updateData.room_id}`)
+          unmatched.push(match.student_id)
+          continue
+        }
+      } else if (typeof updateData.room_id === 'number') {
+        roomIdInt = updateData.room_id
+      } else {
+        errors.push(`Invalid room_id type for student ${match.student_id}: ${typeof updateData.room_id}`)
+        unmatched.push(match.student_id)
+        continue
       }
 
-      let updateError: any = null
-      let updateSuccess = false
+      const updateDataFinal: any = {
+        room_id: roomIdInt,
+        status: 'Confirmed',
+        assignment_date: new Date().toISOString().split('T')[0],
+      }
+      
+      if (match.block_id !== null && match.block_id !== undefined) {
+        // Convert block_id to integer if it's a string
+        if (typeof match.block_id === 'string') {
+          const blockIdInt = parseInt(match.block_id, 10)
+          if (!isNaN(blockIdInt)) {
+            updateDataFinal.block_id = blockIdInt
+          }
+        } else {
+          updateDataFinal.block_id = match.block_id
+        }
+      }
 
-      // Your schema uses student_uuid
-      const { error: error1 } = await supabaseAdmin
+      console.log(`[Matching] Updating room_assignments for student ${match.student_id} with:`, updateDataFinal)
+      
+      const { data: updateResult, error: updateError } = await supabaseAdmin
         .from('room_assignments')
         .update(updateDataFinal)
-        .eq('student_uuid', match.student_id)
+        .eq('student_id', match.student_id)
         .eq('status', 'Pending')
+        .select()
 
-      if (error1) {
-        // Try with student_id for compatibility
-        const { error: error2 } = await supabaseAdmin
-          .from('room_assignments')
-          .update(updateDataFinal)
-          .eq('student_id', match.student_id)
-          .eq('status', 'Pending')
+      console.log(`[Matching] Update result:`, updateResult, 'Error:', updateError)
 
-        if (error2) {
-          updateError = error2
-        } else {
-          updateSuccess = true
-        }
-      } else {
-        updateSuccess = true
-      }
-
-      if (!updateSuccess && updateError) {
+      if (updateError) {
         errors.push(`Failed to assign room for student ${match.student_id}: ${updateError.message}`)
+        console.error('Room assignment update error:', updateError, 'Data:', updateDataFinal)
+      } else if (!updateResult || updateResult.length === 0) {
+        console.warn(`[Matching] No rows updated for student ${match.student_id} - student may not have Pending status`)
+      } else {
+        console.log(`[Matching] Successfully updated assignment for student ${match.student_id}`)
       }
     }
 
     // Update room current_occupancy (your schema uses current_occupancy instead of is_available)
-    const assignedRoomIds = [...new Set(matches.map(m => m.room_id))]
+    const assignedRoomIds = [...new Set(validMatches.map(m => m.room_id).filter(id => id !== undefined && id !== null))]
     for (const roomId of assignedRoomIds) {
+      if (!roomId) {
+        continue // Skip undefined/null room IDs
+      }
+
       const room = rooms.find(r => r.id === roomId)
       if (room) {
         const newOccupancy = occupancy.get(roomId) || (room.current_occupancy || 0)
+        
         // Update current_occupancy in rooms table
+        // Column name is 'room.id' (with dot) - match by dorm_id and room_number instead
+        // This avoids the issue with column names containing dots
         const { error } = await supabaseAdmin
           .from('rooms')
           .update({ current_occupancy: newOccupancy })
-          .eq('id', parseInt(roomId)) // Your schema uses integer IDs
+          .eq('dorm_id', room.dorm_id)
+          .eq('room_number', room.room_number)
 
         if (error) {
           errors.push(`Failed to update room ${roomId} occupancy: ${error.message}`)
+          console.error('Room occupancy update error:', error, 'Room ID:', roomId, 'Dorm ID:', room.dorm_id, 'Room Number:', room.room_number, 'New occupancy:', newOccupancy)
         }
+      } else {
+        errors.push(`Room not found for ID: ${roomId}`)
       }
     }
 
     return {
       success: errors.length === 0,
-      matches,
+      matches: validMatches,
       unmatched,
       errors,
     }

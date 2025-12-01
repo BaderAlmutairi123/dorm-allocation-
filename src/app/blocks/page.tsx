@@ -14,22 +14,23 @@ interface BlockMember {
   id: string;
   name: string;
   email: string;
+  is_leader?: boolean;
 }
 
 interface Block {
   id: string;
   code: string;
-  creator: BlockMember;
+  creator?: BlockMember;
   members: BlockMember[];
   maxMembers: number;
 }
 
 interface PotentialRoommate {
-  id: number;
+  id: string;
   name: string;
   major: string;
   year: string;
-  interests: string;
+  gender?: string;
 }
 
 interface NotificationItem {
@@ -53,6 +54,9 @@ export default function BlocksPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [potentialRoommates, setPotentialRoommates] = useState<PotentialRoommate[]>([]);
+  const [isLoadingRoommates, setIsLoadingRoommates] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Set active tab from URL query parameter
   useEffect(() => {
@@ -62,18 +66,11 @@ export default function BlocksPage() {
     }
   }, [searchParams]);
 
-  // Mock data for potential roommates
-  const potentialRoommates: PotentialRoommate[] = [
-    { id: 1, name: "John Doe", major: "Computer Science", year: "Sophomore", interests: "Gaming, Music" },
-    { id: 2, name: "Jane Smith", major: "Biology", year: "Junior", interests: "Reading, Hiking" },
-    { id: 3, name: "Mike Johnson", major: "Engineering", year: "Freshman", interests: "Sports, Movies" },
-  ];
-
-  // Filter roommates by name, major, or interests based on the search query
+  // Filter roommates by name or major based on the search query
   const normalizedQuery = searchQuery.trim().toLowerCase();
   const filteredRoommates = normalizedQuery
     ? potentialRoommates.filter((roommate) =>
-        [roommate.name, roommate.major, roommate.interests]
+        [roommate.name, roommate.major]
           .some((field) => field.toLowerCase().includes(normalizedQuery))
       )
     : potentialRoommates;
@@ -110,14 +107,14 @@ export default function BlocksPage() {
     setActiveTab("notifications");
   };
 
+  // Load user and their block
   useEffect(() => {
     let isMounted = true;
 
-    const loadCurrentUser = async () => {
+    const loadData = async () => {
       try {
         const session = await authClient.getSession();
         if (!session) {
-          // No session - redirect to sign-in
           if (isMounted) {
             router.push('/sign-in');
           }
@@ -136,11 +133,19 @@ export default function BlocksPage() {
               name,
               email: user.email || "",
             });
+
+            // Load user's block
+            const blockResponse = await fetch('/api/blocks');
+            if (blockResponse.ok) {
+              const blockData = await blockResponse.json();
+              if (blockData.block) {
+                setBlock(blockData.block);
+              }
+            }
           }
         }
       } catch (error) {
-        console.error("Error loading user:", error);
-        // On error, redirect to sign-in
+        console.error("Error loading data:", error);
         if (isMounted) {
           router.push('/sign-in');
         }
@@ -151,9 +156,8 @@ export default function BlocksPage() {
       }
     };
 
-    loadCurrentUser();
+    loadData();
 
-    // Fallback timeout to ensure loading doesn't hang forever
     const timeout = setTimeout(() => {
       if (isMounted) {
         setIsLoading(false);
@@ -166,46 +170,69 @@ export default function BlocksPage() {
     };
   }, [router]);
 
-  const generateCode = () => {
-    return Math.random().toString(36).substring(2, 8).toUpperCase();
-  };
-
-  const createBlock = () => {
+  const createBlock = async () => {
     if (!currentStudent) return;
+    setError(null);
 
-    const newBlock: Block = {
-      id: Date.now().toString(),
-      code: generateCode(),
-      creator: currentStudent,
-      members: [currentStudent],
-      maxMembers: 4,
-    };
-    setBlock(newBlock);
+    try {
+      const response = await fetch('/api/blocks', {
+        method: 'POST',
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setError(data.error || 'Failed to create block');
+        return;
+      }
+
+      // Reload block data
+      const blockResponse = await fetch('/api/blocks');
+      if (blockResponse.ok) {
+        const blockData = await blockResponse.json();
+        if (blockData.block) {
+          setBlock(blockData.block);
+        }
+      }
+    } catch (error: any) {
+      console.error('Error creating block:', error);
+      setError(error.message || 'Failed to create block');
+    }
   };
 
-  const joinBlock = () => {
+  const joinBlock = async () => {
     if (!joinCode.trim() || !currentStudent) return;
+    setError(null);
 
-    const mockBlock: Block = {
-      id: Date.now().toString(),
-      code: joinCode.toUpperCase(),
-      creator: {
-        id: "999",
-        name: "John Doe",
-        email: "john@university.edu",
-      },
-      members: [
-        {
-          id: "999",
-          name: "John Doe",
-          email: "john@university.edu",
+    try {
+      const response = await fetch('/api/blocks/join', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
         },
-        currentStudent,
-      ],
-      maxMembers: 4,
-    };
-    setBlock(mockBlock);
-    setJoinCode("");
+        body: JSON.stringify({ code: joinCode.toUpperCase() }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setError(data.error || 'Failed to join block');
+        return;
+      }
+
+      // Reload block data
+      const blockResponse = await fetch('/api/blocks');
+      if (blockResponse.ok) {
+        const blockData = await blockResponse.json();
+        if (blockData.block) {
+          setBlock(blockData.block);
+          setJoinCode("");
+        }
+      }
+    } catch (error: any) {
+      console.error('Error joining block:', error);
+      setError(error.message || 'Failed to join block');
+    }
   };
 
   const copyCode = () => {
@@ -215,10 +242,55 @@ export default function BlocksPage() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const leaveBlock = () => {
-    setBlock(null);
-    setJoinCode("");
+  const leaveBlock = async () => {
+    if (!block) return;
+    setError(null);
+
+    try {
+      const response = await fetch(`/api/blocks/${block.id}`, {
+        method: 'DELETE',
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setError(data.error || 'Failed to leave block');
+        return;
+      }
+
+      setBlock(null);
+      setJoinCode("");
+    } catch (error: any) {
+      console.error('Error leaving block:', error);
+      setError(error.message || 'Failed to leave block');
+    }
   };
+
+  // Load potential roommates when roommates tab is active
+  useEffect(() => {
+    if (activeTab === 'roommates' && !isLoadingRoommates) {
+      setIsLoadingRoommates(true);
+      const loadRoommates = async () => {
+        try {
+          const query = searchQuery.trim();
+          const url = query 
+            ? `/api/students/search?q=${encodeURIComponent(query)}&limit=20`
+            : '/api/students/search?limit=20';
+          
+          const response = await fetch(url);
+          if (response.ok) {
+            const data = await response.json();
+            setPotentialRoommates(data.students || []);
+          }
+        } catch (error) {
+          console.error('Error loading roommates:', error);
+        } finally {
+          setIsLoadingRoommates(false);
+        }
+      };
+      loadRoommates();
+    }
+  }, [activeTab, searchQuery]);
 
   if (isLoading) {
     return (
@@ -302,6 +374,15 @@ export default function BlocksPage() {
           </CardContent>
         </Card>
 
+        {/* Error Message */}
+        {error && (
+          <Card className="mb-6 bg-red-50 border-red-200">
+            <CardContent className="pt-6">
+              <p className="text-red-700">{error}</p>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Block Tab Content */}
         {activeTab === "block" && (
           <div>
@@ -328,8 +409,8 @@ export default function BlocksPage() {
                     </CardDescription>
           </CardHeader>
           <CardContent>
-                    <Button onClick={createBlock} className="w-full">
-                      Create Block
+                    <Button onClick={createBlock} className="w-full" disabled={isLoading}>
+                      {isLoading ? 'Creating...' : 'Create Block'}
                     </Button>
                   </CardContent>
                 </Card>
@@ -356,11 +437,11 @@ export default function BlocksPage() {
                     />
                     <Button
                       onClick={joinBlock}
-                      disabled={!joinCode.trim()}
+                      disabled={!joinCode.trim() || isLoading}
                       variant="secondary"
                       className="w-full"
                     >
-                      Join Block
+                      {isLoading ? 'Joining...' : 'Join Block'}
                     </Button>
                   </CardContent>
                 </Card>
@@ -384,8 +465,9 @@ export default function BlocksPage() {
                   onClick={leaveBlock}
                   variant="ghost"
                   className="text-destructive hover:text-destructive"
+                  disabled={isLoading}
                 >
-                  Leave Block
+                  {isLoading ? 'Leaving...' : 'Leave Block'}
                 </Button>
               </div>
             </CardHeader>
@@ -439,12 +521,12 @@ export default function BlocksPage() {
                           <div className="flex-1">
                             <p className="font-semibold flex items-center gap-2">
                               {member.name}
-                              {member.id === block.creator.id && (
+                              {(member.is_leader || member.id === block.creator?.id) && (
                                 <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded">
                                   Creator
                                 </span>
                               )}
-                              {member.id === currentStudent.id && (
+                              {member.id === currentStudent?.id && (
                                 <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded">
                                   You
                                 </span>
@@ -503,7 +585,9 @@ export default function BlocksPage() {
                     />
                   </div>
                   <div className="flex items-end">
-                    <Button>Search</Button>
+                    <Button disabled={isLoadingRoommates}>
+                      {isLoadingRoommates ? 'Searching...' : 'Search'}
+                    </Button>
                   </div>
                 </div>
               </div>
@@ -518,35 +602,41 @@ export default function BlocksPage() {
               {/* Potential Roommates List */}
               <div className="border-t pt-6">
                 <h2 className="text-2xl font-semibold mb-4">Potential Roommates</h2>
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                  {filteredRoommates.map((roommate) => (
-                    <Card key={roommate.id}>
-                      <CardHeader>
-                        <CardTitle className="text-lg">{roommate.name}</CardTitle>
-                        <CardDescription>{roommate.major} • {roommate.year}</CardDescription>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="space-y-2">
-                          <div>
-                            <p className="text-sm font-medium">Interests</p>
-                            <p className="text-sm text-muted-foreground">{roommate.interests}</p>
+                {isLoadingRoommates ? (
+                  <p className="text-sm text-muted-foreground">Loading roommates...</p>
+                ) : (
+                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                    {filteredRoommates.map((roommate) => (
+                      <Card key={roommate.id}>
+                        <CardHeader>
+                          <CardTitle className="text-lg">{roommate.name}</CardTitle>
+                          <CardDescription>{roommate.major} • {roommate.year}</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="space-y-2">
+                            {roommate.gender && (
+                              <div>
+                                <p className="text-sm font-medium">Gender</p>
+                                <p className="text-sm text-muted-foreground">{roommate.gender}</p>
+                              </div>
+                            )}
+                            <Button
+                              className="w-full mt-4"
+                              onClick={() => handleSendRequest(roommate)}
+                            >
+                              Send Request
+                            </Button>
                           </div>
-                          <Button
-                            className="w-full mt-4"
-                            onClick={() => handleSendRequest(roommate)}
-                          >
-                            Send Request
-                          </Button>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                  {filteredRoommates.length === 0 && (
-                    <p className="text-sm text-muted-foreground col-span-full">
-                      No roommates match your search yet.
-                    </p>
-                  )}
-                </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                    {filteredRoommates.length === 0 && !isLoadingRoommates && (
+                      <p className="text-sm text-muted-foreground col-span-full">
+                        No roommates found. Try a different search query.
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>

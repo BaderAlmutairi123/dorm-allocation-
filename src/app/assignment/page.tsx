@@ -191,29 +191,31 @@ export default function AssignmentPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <p className="text-sm text-gray-600 mb-1">Building</p>
-              <p className="text-xl font-semibold">{assignment.room.dorm.dorm_name}</p>
-              <p className="text-sm text-gray-600 mt-1">{assignment.room.dorm.address}</p>
+              <p className="text-xl font-semibold">{assignment.room?.dorm?.dorm_name || 'Unknown Building'}</p>
+              {assignment.room?.dorm?.address && (
+                <p className="text-sm text-gray-600 mt-1">{assignment.room.dorm.address}</p>
+              )}
             </div>
 
             <div>
               <p className="text-sm text-gray-600 mb-1">Room Number</p>
-              <p className="text-xl font-semibold">{assignment.room.room_number}</p>
+              <p className="text-xl font-semibold">{assignment.room?.room_number || 'N/A'}</p>
             </div>
 
             <div>
               <p className="text-sm text-gray-600 mb-1">Floor</p>
-              <p className="text-xl font-semibold">Floor {assignment.room.floor_number}</p>
+              <p className="text-xl font-semibold">Floor {assignment.room?.floor_number || 'N/A'}</p>
             </div>
 
             <div>
               <p className="text-sm text-gray-600 mb-1">Room Type</p>
-              <p className="text-xl font-semibold">{assignment.room.room_type}</p>
+              <p className="text-xl font-semibold">{assignment.room?.room_type || 'N/A'}</p>
             </div>
 
             <div>
               <p className="text-sm text-gray-600 mb-1">Capacity</p>
               <p className="text-xl font-semibold">
-                {assignment.room.current_occupancy} / {assignment.room.max_capacity} students
+                {assignment.room?.current_occupancy || 0} / {assignment.room?.max_capacity || 0} students
               </p>
             </div>
 
@@ -231,19 +233,21 @@ export default function AssignmentPage() {
           <div className="mt-6 pt-6 border-t">
             <p className="text-sm font-medium mb-2">Room Features</p>
             <div className="flex flex-wrap gap-4">
-              {assignment.room.wants_suite_bathroom && (
+              {assignment.room?.wants_suite_bathroom && (
                 <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
                   Suite Bathroom
                 </span>
               )}
-              {assignment.room.is_accessible && (
+              {assignment.room?.is_accessible && (
                 <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm">
                   Accessible
                 </span>
               )}
-              <span className="px-3 py-1 bg-gray-100 text-gray-800 rounded-full text-sm">
-                {assignment.room.dorm.dorm_gender} Housing
-              </span>
+              {assignment.room?.dorm?.dorm_gender && (
+                <span className="px-3 py-1 bg-gray-100 text-gray-800 rounded-full text-sm">
+                  {assignment.room.dorm.dorm_gender} Housing
+                </span>
+              )}
             </div>
           </div>
         </CardContent>
@@ -292,7 +296,7 @@ export default function AssignmentPage() {
       )}
 
       {/* No Roommates Message */}
-      {assignment.roommates.length === 0 && assignment.room.current_occupancy < assignment.room.max_capacity && (
+      {assignment.roommates?.length === 0 && (assignment.room?.current_occupancy || 0) < (assignment.room?.max_capacity || 1) && (
         <Card>
           <CardContent className="pt-6">
             <p className="text-gray-600 text-center">

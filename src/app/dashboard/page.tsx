@@ -39,6 +39,8 @@ export default function DashboardPage() {
     applicationStatus: 'Not Started',
   });
   const [userName, setUserName] = useState("");
+  const [isRunningMatching, setIsRunningMatching] = useState(false);
+  const [matchingMessage, setMatchingMessage] = useState("");
 
   useEffect(() => {
     const loadDashboard = async () => {
@@ -77,7 +79,7 @@ export default function DashboardPage() {
         // Check assignment
         const { data: assignment } = await supabase
           .from('room_assignments')
-          .select('*, rooms(*, dorms(*))')
+          .select('*')
           .eq('student_id', user?.id)
           .single();
 
@@ -87,11 +89,32 @@ export default function DashboardPage() {
         if (assignment) {
           if (assignment.status === 'Confirmed' && assignment.room_id) {
             applicationStatus = 'Assigned';
+            
+            // Fetch all rooms and find by ID (workaround for "room.id" column name)
+            const { data: rooms } = await supabase
+              .from('rooms')
+              .select('*');
+            
+            const room = rooms?.find((r: any) => {
+              const roomId = r['room.id'] || r.room_id || r.id;
+              return roomId === assignment.room_id || roomId === parseInt(assignment.room_id);
+            });
+            
+            let dormName = 'Unknown Building';
+            if (room?.dorm_id) {
+              const { data: dorm } = await supabase
+                .from('dorms')
+                .select('dorm_name')
+                .eq('dorm_id', room.dorm_id)
+                .single();
+              if (dorm) dormName = dorm.dorm_name;
+            }
+            
             assignmentData = {
-              room_number: assignment.rooms?.room_number,
-              dorm_name: assignment.rooms?.dorms?.dorm_name,
-              floor_number: assignment.rooms?.floor_number,
-              room_type: assignment.rooms?.room_type,
+              room_number: room?.room_number || 'Unknown',
+              dorm_name: dormName,
+              floor_number: room?.floor_number || 0,
+              room_type: room?.room_type || 'Unknown',
             };
           } else if (assignment.status === 'Pending') {
             applicationStatus = 'Pending';
@@ -256,6 +279,79 @@ export default function DashboardPage() {
               </Button>
             </Link>
           </div>
+          
+          {/* Run Matching Button - Show when application is pending or submitted */}
+          {(status.applicationStatus === 'Pending' || (status.profileComplete && status.preferencesComplete)) && (
+            <div className="mt-4 pt-4 border-t">
+              <Button 
+                className="w-full" 
+                variant="default"
+                onClick={async () => {
+                  setIsRunningMatching(true);
+                  setMatchingMessage("");
+                  try {
+                    const response = await fetch('/api/matching/run', {
+                      method: 'POST',
+                    });
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                      // Check if current user was matched
+                      const user = await authClient.getUser();
+                      const currentUserId = user?.id;
+                      const matchedStudentIds = data.matchedStudentIds || [];
+                      const wasMatched = currentUserId && matchedStudentIds.includes(currentUserId);
+                      
+                      if (wasMatched) {
+                        setMatchingMessage(`🎉 You have been assigned a room! Redirecting to view your assignment...`);
+                        // Redirect to assignment page to see results
+                        setTimeout(() => {
+                          router.push('/assignment');
+                        }, 1500);
+                      } else if (data.matched > 0) {
+                        setMatchingMessage(`✓ ${data.message || 'Matching completed.'} You were not matched in this round.`);
+                        // Reload to check status
+                        setTimeout(() => {
+                          window.location.reload();
+                        }, 2000);
+                      } else {
+                        setMatchingMessage(`✓ ${data.message || 'No pending students to match.'}`);
+                      }
+                    } else {
+                      // Show detailed errors if available
+                      const errorDetails = data.errors && data.errors.length > 0 
+                        ? `\nErrors: ${data.errors.join(', ')}`
+                        : '';
+                      const message = `${data.message || data.error || 'Matching completed with some issues'}${errorDetails}`;
+                      setMatchingMessage(`⚠ ${message}`);
+                      // Also log to console for debugging
+                      console.error('Matching errors:', data.errors);
+                    }
+                  } catch (error: any) {
+                    setMatchingMessage(`✗ Error: ${error.message || 'Failed to run matching'}`);
+                  } finally {
+                    setIsRunningMatching(false);
+                  }
+                }}
+                disabled={isRunningMatching}
+              >
+                <Calendar className="mr-2 h-4 w-4" />
+                {isRunningMatching ? 'Running Matching...' : 'Run Matching Algorithm'}
+              </Button>
+            </div>
+          )}
+          
+          {matchingMessage && (
+            <div className={`mt-4 p-3 rounded-md text-sm ${
+              matchingMessage.startsWith('✓') 
+                ? 'bg-green-50 text-green-700 border border-green-200' 
+                : matchingMessage.startsWith('⚠')
+                ? 'bg-yellow-50 text-yellow-700 border border-yellow-200'
+                : 'bg-red-50 text-red-700 border border-red-200'
+            }`}>
+              {matchingMessage}
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -350,7 +446,7 @@ export default function DashboardPage() {
                   <p className="font-medium">Wait for Assignment</p>
                   <p className="text-sm text-gray-600">
                     {status.applicationStatus === 'Pending' 
-                      ? 'Your application is under review' 
+                      ? 'Your application has been submitted. The matching algorithm is processing your assignment. Please check back in a few moments.' 
                       : 'We\'ll match you once your application is complete'}
                   </p>
                 </div>

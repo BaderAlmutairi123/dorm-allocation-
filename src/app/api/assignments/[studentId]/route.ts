@@ -3,10 +3,10 @@ import { createClient } from '@supabase/supabase-js'
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { student_id: string } }
+  { params }: { params: Promise<{ studentId: string }> }
 ) {
   try {
-    const { student_id } = params
+    const { studentId: student_id } = await params
     const authHeader = request.headers.get('authorization')
     const token = authHeader?.replace('Bearer ', '')
 
@@ -44,7 +44,7 @@ export async function GET(
     // Get room assignment
     const { data: assignment, error: assignmentError } = await supabase
       .from('room_assignments')
-      .select('*, rooms(*, dorms(*))')
+      .select('*')
       .eq('student_id', student_id)
       .single()
 
@@ -62,6 +62,60 @@ export async function GET(
       )
     }
 
+    // Fetch room data separately (the join doesn't work well with "room.id" column name)
+    let roomData: any = null
+    let dormData: any = null
+    
+    if (assignment.room_id) {
+      // Try different ways to query the room since column name has a dot
+      let room = null
+      
+      // First try: use the column name with quotes via RPC or raw query
+      const { data: rooms, error: roomError } = await supabase
+        .from('rooms')
+        .select('*')
+      
+      console.log('All rooms count:', rooms?.length, 'Looking for room_id:', assignment.room_id)
+      
+      // Find the room by matching the room.id column
+      if (rooms) {
+        room = rooms.find((r: any) => {
+          const roomId = r['room.id'] || r.room_id || r.id
+          return roomId === assignment.room_id || roomId === parseInt(assignment.room_id)
+        })
+      }
+      
+      console.log('Found room:', room)
+      
+      if (room) {
+        roomData = room
+        
+        // Fetch dorm data
+        const dormId = room.dorm_id
+        if (dormId) {
+          // First, let's see what dorms exist
+          const { data: allDorms } = await supabase
+            .from('dorms')
+            .select('*')
+          
+          console.log('All dorms:', allDorms)
+          console.log('Looking for dorm_id:', dormId)
+          
+          // Try to find the dorm - the ID column might have a different name
+          const dorm = allDorms?.find((d: any) => {
+            const id = d.dorm_id || d['dorm.id'] || d.id
+            return id === dormId || id === parseInt(dormId)
+          })
+          
+          console.log('Found dorm:', dorm)
+          
+          if (dorm) {
+            dormData = dorm
+          }
+        }
+      }
+    }
+
     // Get roommates if room is assigned
     let roommates: any[] = []
     if (assignment.room_id && assignment.status === 'Confirmed') {
@@ -70,7 +124,7 @@ export async function GET(
         .select('student_id, students(first_name, last_name, email, major)')
         .eq('room_id', assignment.room_id)
         .eq('status', 'Confirmed')
-          .neq('student_id', student_id)
+        .neq('student_id', student_id)
 
       if (roommateAssignments) {
         roommates = roommateAssignments.map(ra => ({
@@ -88,21 +142,21 @@ export async function GET(
         block_id: assignment.block_id,
         status: assignment.status,
         assignment_date: assignment.assignment_date,
-        room: assignment.rooms ? {
-          room_id: assignment.rooms.room_id,
-          room_number: assignment.rooms.room_number,
-          floor_number: assignment.rooms.floor_number,
-          room_type: assignment.rooms.room_type,
-          max_capacity: assignment.rooms.max_capacity,
-          current_occupancy: assignment.rooms.current_occupancy,
-          wants_suite_bathroom: assignment.rooms.wants_suite_bathroom,
-          is_accessible: assignment.rooms.is_accessible,
-          dorm: assignment.rooms.dorms ? {
-            dorm_id: assignment.rooms.dorms.dorm_id,
-            dorm_name: assignment.rooms.dorms.dorm_name,
-            address: assignment.rooms.dorms.address,
-            dorm_gender: assignment.rooms.dorms.dorm_gender,
-            dorm_type: assignment.rooms.dorms.dorm_type,
+        room: roomData ? {
+          room_id: roomData['room.id'] || roomData.room_id,
+          room_number: roomData.room_number,
+          floor_number: roomData.floor_number,
+          room_type: roomData.room_type,
+          max_capacity: roomData.max_capacity,
+          current_occupancy: roomData.current_occupancy,
+          wants_suite_bathroom: roomData.wants_suite_bathroom,
+          is_accessible: roomData.is_accessible,
+          dorm: dormData ? {
+            dorm_id: dormData.dorm_id,
+            dorm_name: dormData.dorm_name,
+            address: dormData.address,
+            dorm_gender: dormData.dorm_gender,
+            dorm_type: dormData.dorm_type,
           } : null,
         } : null,
         roommates,

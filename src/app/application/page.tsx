@@ -132,6 +132,7 @@ export default function ApplicationPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
+  const [successMessage, setSuccessMessage] = useState("");
   const [majorSearch, setMajorSearch] = useState("");
   const [showMajorDropdown, setShowMajorDropdown] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
@@ -317,6 +318,11 @@ export default function ApplicationPage() {
 
       setSuccess(true);
       setIsSubmitted(true);
+      // Store success message if provided
+      if (data.message) {
+        setSuccessMessage(data.message);
+        setError(""); // Clear any errors
+      }
       // Stay on the same page - form will be grayed out automatically
 
     } catch (err: any) {
@@ -361,7 +367,7 @@ export default function ApplicationPage() {
             <CardHeader>
               <CardTitle className="text-3xl">Dorm Application</CardTitle>
               <CardDescription className="text-base">
-                Complete your dorm application by filling out the information below.
+                Complete your dorm application by providing your personal information and roommate preferences below.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -386,7 +392,7 @@ export default function ApplicationPage() {
                           <span className="font-medium text-yellow-700">In Progress</span>
                         </div>
                         <p className="text-sm text-muted-foreground">
-                          Complete your application and submit your preferences
+                          Complete and submit your application below
                         </p>
                       </>
                     )}
@@ -406,7 +412,10 @@ export default function ApplicationPage() {
               <form onSubmit={handleSubmit} className="space-y-6">
                 {/* Personal Information */}
                 <div className="space-y-4">
-                  <h3 className="text-lg font-semibold">Personal Information</h3>
+                  <h3 className="text-lg font-semibold">Personal Information & Preferences</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Provide your contact information and roommate preferences to help us find you the best match.
+                  </p>
 
                   <div className="grid gap-4 md:grid-cols-2">
                     <div className="space-y-2">
@@ -562,7 +571,10 @@ export default function ApplicationPage() {
 
                 {/* Housing Preferences */}
                 <div className="space-y-4">
-                  <h3 className="text-lg font-semibold">Housing Preferences</h3>
+                  <h3 className="text-lg font-semibold">Roommate Matching Preferences</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Help us find you compatible roommates by sharing your living preferences.
+                  </p>
 
                   <div className="space-y-2">
                     <Label htmlFor="roomType">Preferred Room Type</Label>
@@ -672,10 +684,18 @@ export default function ApplicationPage() {
                   </div>
                 )}
 
-                {isSubmitted && (
+                {success && !error && (
+                  <div className="p-4 bg-green-50 border border-green-200 rounded-md">
+                    <p className="text-green-600 text-sm font-medium">
+                      ✓ {successMessage || "Your application has been submitted successfully! We'll match you with compatible roommates soon."}
+                    </p>
+                  </div>
+                )}
+
+                {isSubmitted && !success && (
                   <div className="p-4 bg-blue-50 border border-blue-200 rounded-md">
                     <p className="text-blue-600 text-sm font-medium">
-                      ✓ Your application has been submitted. Your preferences are shown above.
+                      ✓ Your application has been submitted. You can view your information above.
                     </p>
                   </div>
                 )}

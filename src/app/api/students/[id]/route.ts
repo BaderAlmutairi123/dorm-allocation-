@@ -49,34 +49,14 @@ export async function GET(
       .single()
 
     if (studentError) {
-      // Try with student_uuid
-      const { data: studentAlt, error: altError } = await supabase
-        .from('students')
-        .select('*')
-        .eq('student_uuid', id)
-        .single()
-
-      if (altError) {
-        return NextResponse.json(
-          { error: 'Student not found', details: altError.message },
-          { status: 404 }
-        )
-      }
-
-      return NextResponse.json({
-        student_id: studentAlt.student_uuid || studentAlt.student_id || studentAlt.id,
-        first_name: studentAlt.first_name,
-        last_name: studentAlt.last_name,
-        email: studentAlt.email,
-        phone: studentAlt.phone,
-        gender: studentAlt.gender,
-        year_level: studentAlt.year_level,
-        major: studentAlt.major,
-      })
+      return NextResponse.json(
+        { error: 'Student not found', details: studentError.message },
+        { status: 404 }
+      )
     }
 
     return NextResponse.json({
-      student_id: student.student_id || student.id,
+      student_id: student.student_id,
       first_name: student.first_name,
       last_name: student.last_name,
       email: student.email,
@@ -152,25 +132,10 @@ export async function PUT(
       .single()
 
     if (updateError) {
-      // Try with student_uuid
-      const { data: updatedAlt, error: altError } = await supabase
-        .from('students')
-        .update(updateData)
-        .eq('student_uuid', id)
-        .select()
-        .single()
-
-      if (altError) {
-        return NextResponse.json(
-          { error: 'Failed to update student', details: altError.message },
-          { status: 500 }
-        )
-      }
-
-      return NextResponse.json({
-        message: 'Student updated successfully',
-        student: updatedAlt,
-      })
+      return NextResponse.json(
+        { error: 'Failed to update student', details: updateError.message },
+        { status: 500 }
+      )
     }
 
     return NextResponse.json({

@@ -34,7 +34,8 @@ export async function POST(request: Request) {
       {
         success: true,
         message: `Successfully matched ${result.matches.length} students`,
-        matches: result.matches,
+        matched: result.matches.length,
+        matchedStudentIds: result.matches.map(m => m.student_id),
         unmatched: result.unmatched,
         errors: result.errors,
       },

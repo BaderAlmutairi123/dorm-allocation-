@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { supabaseAdmin } from '@/lib/supabase/server'
-import { calculateCompatibility } from '@/lib/matching/algorithm'
+import { calculateCompatibility, runMatchingAlgorithm } from '@/lib/matching/algorithm'
 
 export async function POST(request: NextRequest) {
   try {
@@ -391,42 +391,74 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if room assignment already exists (student_id is unique)
-    const { data: existingAssignment } = await supabase
+    const { data: existingAssignment, error: checkError } = await supabase
       .from('room_assignments')
-      .select('student_id')
+      .select('assignment_id, student_id')
       .eq('student_id', studentId)
-      .single()
+      .maybeSingle() // Use maybeSingle() instead of single() to avoid errors when no record exists
 
     let assignmentError
 
+    if (checkError && checkError.code !== 'PGRST116') {
+      // PGRST116 is "not found" which is fine, other errors are real problems
+      console.error('Error checking for existing assignment:', checkError)
+    }
+
     if (existingAssignment) {
       // Update existing assignment (student resubmitting application)
+      // Only update if status is Pending or if we want to reset a Confirmed assignment
       const { error } = await supabase
         .from('room_assignments')
-        .update(assignmentData)
+        .update({
+          ...assignmentData,
+          // Reset room_id if updating from Confirmed back to Pending
+          room_id: assignmentData.status === 'Pending' ? null : existingAssignment.room_id,
+        })
         .eq('student_id', studentId)
       assignmentError = error
     } else {
-      // Insert new assignment
+      // Insert new assignment - use upsert to handle race conditions
       const { error } = await supabase
         .from('room_assignments')
-        .insert({
+        .upsert({
           ...assignmentData,
           student_id: studentId,
+        }, {
+          onConflict: 'student_id', // Use student_id as the conflict resolution key
+          ignoreDuplicates: false
         })
       assignmentError = error
     }
 
     if (assignmentError) {
       console.error('Error saving room assignment:', assignmentError)
-      // Continue even if assignment creation fails
+      // If it's a duplicate key error, try to update instead
+      if (assignmentError.code === '23505') {
+        console.log('Duplicate key detected, attempting update instead...')
+        const { error: updateError } = await supabase
+          .from('room_assignments')
+          .update(assignmentData)
+          .eq('student_id', studentId)
+        
+        if (updateError) {
+          console.error('Error updating room assignment after duplicate key:', updateError)
+        }
+      }
+      // Continue even if assignment creation fails - don't break the application submission
     }
+
+    // Run matching algorithm automatically in the background
+    // Don't wait for it or fail the request if it errors
+    runMatchingAlgorithm().catch(error => {
+      console.error('Error running automatic matching after application submission:', error)
+      // Don't throw - this is a background process
+    })
 
     return NextResponse.json(
       {
         message: blockId 
           ? `Application submitted successfully. You've been matched with ${matchedStudents.length} compatible student(s) and added to a block!`
-          : 'Application submitted successfully. We\'ll match you with compatible roommates soon.',
+          : 'Application submitted successfully. We\'re matching you with compatible roommates now.',
         student: studentData,
         blockId: blockId,
         matchedStudents: matchedStudents.length
