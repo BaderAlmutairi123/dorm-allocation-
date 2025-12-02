@@ -124,17 +124,16 @@ export async function DELETE(
       )
     }
 
-    // Update block capacity
-    const { data: block } = await dbClient
-      .from('student_blocks')
-      .select('current_capacity')
+    // Update block capacity by counting actual remaining members
+    const { data: remainingMembers } = await dbClient
+      .from('block_members')
+      .select('student_id')
       .eq('block_id', blockId)
-      .single()
 
-    if (block) {
+    if (remainingMembers && remainingMembers.length > 0) {
       await dbClient
         .from('student_blocks')
-        .update({ current_capacity: Math.max(0, block.current_capacity - 1) })
+        .update({ current_capacity: remainingMembers.length })
         .eq('block_id', blockId)
     }
 

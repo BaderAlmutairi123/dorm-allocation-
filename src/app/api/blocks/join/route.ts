@@ -107,10 +107,15 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Update block capacity
+    // Update block capacity by counting actual members
+    const { data: allMembers } = await dbClient
+      .from('block_members')
+      .select('student_id')
+      .eq('block_id', block.block_id)
+
     await dbClient
       .from('student_blocks')
-      .update({ current_capacity: block.current_capacity + 1 })
+      .update({ current_capacity: allMembers?.length || 1 })
       .eq('block_id', block.block_id)
 
     // Find the block leader's room assignment and update joining student's assignment
