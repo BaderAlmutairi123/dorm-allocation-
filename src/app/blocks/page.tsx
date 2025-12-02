@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Users, Copy, Check, UserPlus, Home, Bell } from "lucide-react";
+import { Users, Copy, Check, UserPlus, Home, Building, DoorOpen } from "lucide-react";
 import { authClient } from "@/lib/supabase/auth";
 
 interface BlockMember {
@@ -24,50 +24,26 @@ interface Block {
   maxMembers: number;
 }
 
-
-interface NotificationItem {
-  id: number;
-  roommateName: string;
-  roomCode?: string;
-  message: string;
-  timestamp: string;
+interface RoomAssignment {
+  room_number?: string;
+  room_type?: string;
+  dorm_name?: string;
+  status?: string;
+  roommates?: BlockMember[];
 }
-
-interface ReceivedRequest {
-  request_id: number;
-  sender: {
-    student_id: string;
-    first_name: string;
-    last_name: string;
-    email: string;
-  };
-  block_code?: string;
-  message?: string;
-  status: string;
-  created_at: string;
-}
-
-type TabType = "block" | "notifications";
 
 export default function BlocksPage() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<TabType>("block");
   const [block, setBlock] = useState<Block | null>(null);
   const [joinCode, setJoinCode] = useState("");
   const [copied, setCopied] = useState(false);
   const [currentStudent, setCurrentStudent] = useState<BlockMember | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [isJoining, setIsJoining] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [receivedRequests, setReceivedRequests] = useState<ReceivedRequest[]>([]);
-  const [isLoadingRequests, setIsLoadingRequests] = useState(false);
-  const [roomAssignment, setRoomAssignment] = useState<{
-    room_number?: string;
-    room_type?: string;
-    dorm_name?: string;
-    status?: string;
-    roommates?: BlockMember[];
-  } | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [roomAssignment, setRoomAssignment] = useState<RoomAssignment | null>(null);
 
 
 
@@ -161,6 +137,8 @@ export default function BlocksPage() {
   const createBlock = async () => {
     if (!currentStudent) return;
     setError(null);
+    setSuccessMessage(null);
+    setIsCreating(true);
 
     try {
       const session = await authClient.getSession();
@@ -186,17 +164,22 @@ export default function BlocksPage() {
         const blockData = await blockResponse.json();
         if (blockData.block) {
           setBlock(blockData.block);
+          setSuccessMessage('Block created successfully! Share your code with friends.');
         }
       }
     } catch (error: any) {
       console.error('Error creating block:', error);
       setError(error.message || 'Failed to create block');
+    } finally {
+      setIsCreating(false);
     }
   };
 
   const joinBlock = async () => {
     if (!joinCode.trim() || !currentStudent) return;
     setError(null);
+    setSuccessMessage(null);
+    setIsJoining(true);
 
     try {
       const session = await authClient.getSession();
@@ -220,18 +203,43 @@ export default function BlocksPage() {
         return;
       }
 
-      // Reload block data
+      // Reload block and room assignment data
       const blockResponse = await fetch('/api/blocks', { headers: authHeaders });
       if (blockResponse.ok) {
         const blockData = await blockResponse.json();
         if (blockData.block) {
           setBlock(blockData.block);
           setJoinCode("");
+          setSuccessMessage('Successfully joined the block! You\'ve been assigned to the same room as your block members.');
+        }
+      }
+
+      // Reload room assignment
+      const user = await authClient.getUser();
+      if (user) {
+        const assignmentResponse = await fetch(`/api/assignments/${user.id}`, { headers: authHeaders });
+        if (assignmentResponse.ok) {
+          const assignmentData = await assignmentResponse.json();
+          if (assignmentData.assignment && assignmentData.assignment.room) {
+            setRoomAssignment({
+              room_number: assignmentData.assignment.room.room_number,
+              room_type: assignmentData.assignment.room.room_type,
+              dorm_name: assignmentData.assignment.room.dorm?.dorm_name,
+              status: assignmentData.assignment.status,
+              roommates: assignmentData.assignment.roommates?.map((r: any) => ({
+                id: r.student_id,
+                name: `${r.first_name} ${r.last_name}`,
+                email: r.email,
+              })) || [],
+            });
+          }
         }
       }
     } catch (error: any) {
       console.error('Error joining block:', error);
       setError(error.message || 'Failed to join block');
+    } finally {
+      setIsJoining(false);
     }
   };
 
@@ -242,81 +250,11 @@ export default function BlocksPage() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // Load received requests when notifications tab is active
-  useEffect(() => {
-    if (activeTab === 'notifications' && !isLoadingRequests) {
-      setIsLoadingRequests(true);
-      const loadRequests = async () => {
-        try {
-          const session = await authClient.getSession();
-          const headers: HeadersInit = session?.access_token 
-            ? { 'Authorization': `Bearer ${session.access_token}` } 
-            : {};
-          
-          const response = await fetch('/api/roommate-requests', { headers });
-          if (response.ok) {
-            const data = await response.json();
-            setReceivedRequests(data.received?.filter((r: ReceivedRequest) => r.status === 'Pending') || []);
-          }
-        } catch (error) {
-          // Silently fail - table might not exist yet
-        } finally {
-          setIsLoadingRequests(false);
-        }
-      };
-      loadRequests();
-    }
-  }, [activeTab]);
-
-  const handleRespondToRequest = async (requestId: number, status: 'Accepted' | 'Declined') => {
-    try {
-      const session = await authClient.getSession();
-      const headers: HeadersInit = {
-        'Content-Type': 'application/json',
-        ...(session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {}),
-      };
-
-      const response = await fetch(`/api/roommate-requests/${requestId}`, {
-        method: 'PUT',
-        headers,
-        body: JSON.stringify({ status }),
-      });
-
-      if (response.ok) {
-        // Remove from received requests
-        setReceivedRequests(prev => prev.filter(r => r.request_id !== requestId));
-        
-        // Add notification
-        const request = receivedRequests.find(r => r.request_id === requestId);
-        if (request) {
-          setNotifications(prev => [
-            ...prev,
-            {
-              id: Date.now(),
-              roommateName: `${request.sender.first_name} ${request.sender.last_name}`,
-              message: status === 'Accepted' 
-                ? `You accepted ${request.sender.first_name}'s roommate request!`
-                : `You declined ${request.sender.first_name}'s roommate request.`,
-              timestamp: new Date().toISOString(),
-            },
-          ]);
-        }
-
-        // Reload block data if accepted
-        if (status === 'Accepted') {
-          const blockResponse = await fetch('/api/blocks', { headers });
-          if (blockResponse.ok) {
-            const blockData = await blockResponse.json();
-            if (blockData.block) {
-              setBlock(blockData.block);
-            }
-          }
-        }
-      }
-    } catch (error) {
-      setError('Failed to respond to request');
-    }
-  };
+  // Determine if user has a confirmed room without being in a block (matched by algorithm)
+  const hasConfirmedRoomWithoutBlock = !block && roomAssignment && roomAssignment.status === 'Confirmed';
+  
+  // Determine if user is the block leader
+  const isBlockLeader = block && currentStudent && block.creator?.id === currentStudent.id;
 
 
   if (isLoading) {
@@ -356,94 +294,101 @@ export default function BlocksPage() {
   return (
     <div className="min-h-screen" style={{ backgroundColor: '#2D3BA6' }}>
     <div className="container mx-auto px-4 py-8">
-      <div className="max-w-6xl mx-auto">
+      <div className="max-w-4xl mx-auto">
         {/* Title Section */}
         <Card className="mb-6 bg-white">
           <CardContent className="pt-6">
             <div className="text-center">
-              <h1 className="text-3xl font-bold mb-2">Blocks & Roommates</h1>
+              <h1 className="text-3xl font-bold mb-2">My Block</h1>
               <p className="text-muted-foreground">
-                Manage your student block or find potential roommates
+                {block 
+                  ? 'View your block members and share your invite code'
+                  : hasConfirmedRoomWithoutBlock
+                    ? 'You\'ve been assigned a room through our matching system'
+                    : 'Create a block to room with friends or join an existing one'
+                }
               </p>
             </div>
           </CardContent>
         </Card>
 
-        {/* Tab Navigation */}
-        <Card className="mb-6 bg-white">
-          <CardContent className="pt-6">
-            <div className="flex gap-6 border-b">
-              <Button
-                variant={activeTab === "block" ? "default" : "ghost"}
-                onClick={() => setActiveTab("block")}
-                className="rounded-b-none text-base"
-              >
-                <Home className="w-5 h-5 mr-2" />
-                My Block
-              </Button>
-              <Button
-                variant={activeTab === "notifications" ? "default" : "ghost"}
-                onClick={() => setActiveTab("notifications")}
-                className="rounded-b-none text-base"
-              >
-                <Bell className="w-5 h-5 mr-2" />
-                Notifications
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+        {/* Success Message */}
+        {successMessage && (
+          <Card className="mb-6 bg-green-50 border-green-200">
+            <CardContent className="pt-6">
+              <p className="text-green-700 flex items-center gap-2">
+                <Check className="w-5 h-5" />
+                {successMessage}
+              </p>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Error Message */}
         {error && (
           <Card className="mb-6 bg-red-50 border-red-200">
             <CardContent className="pt-6">
               <p className="text-red-700">{error}</p>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="mt-2 text-red-600"
+                onClick={() => setError(null)}
+              >
+                Dismiss
+              </Button>
             </CardContent>
           </Card>
         )}
 
-        {/* Block Tab Content */}
-        {activeTab === "block" && (
-          <div>
-        {/* Room Assignment Info (when user has a room but no block) */}
-        {!block && roomAssignment && roomAssignment.status === 'Confirmed' && (
+        {/* SCENARIO 1: User has a confirmed room without being in a block (matched by algorithm) */}
+        {hasConfirmedRoomWithoutBlock && (
           <Card className="mb-6 border-2 border-green-200 bg-green-50">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-green-800">
-                <Home className="w-5 h-5" />
+                <DoorOpen className="w-5 h-5" />
                 Your Room Assignment
               </CardTitle>
               <CardDescription className="text-green-700">
-                You&apos;ve been assigned to a room! Here are your details.
+                You&apos;ve been matched and assigned to a room! View your details below.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid md:grid-cols-3 gap-4">
-                <div>
-                  <p className="text-sm text-muted-foreground">Building</p>
-                  <p className="font-semibold">{roomAssignment.dorm_name || 'N/A'}</p>
+                <div className="bg-white p-4 rounded-lg border">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Building className="w-4 h-4 text-muted-foreground" />
+                    <p className="text-sm text-muted-foreground">Building</p>
+                  </div>
+                  <p className="font-semibold text-lg">{roomAssignment?.dorm_name || 'N/A'}</p>
                 </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Room</p>
-                  <p className="font-semibold">{roomAssignment.room_number || 'N/A'}</p>
+                <div className="bg-white p-4 rounded-lg border">
+                  <div className="flex items-center gap-2 mb-1">
+                    <DoorOpen className="w-4 h-4 text-muted-foreground" />
+                    <p className="text-sm text-muted-foreground">Room</p>
+                  </div>
+                  <p className="font-semibold text-lg">{roomAssignment?.room_number || 'N/A'}</p>
                 </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Room Type</p>
-                  <p className="font-semibold">{roomAssignment.room_type || 'N/A'}</p>
+                <div className="bg-white p-4 rounded-lg border">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Home className="w-4 h-4 text-muted-foreground" />
+                    <p className="text-sm text-muted-foreground">Room Type</p>
+                  </div>
+                  <p className="font-semibold text-lg">{roomAssignment?.room_type || 'N/A'}</p>
                 </div>
               </div>
 
               {/* Roommates */}
-              {roomAssignment.roommates && roomAssignment.roommates.length > 0 && (
-                <div className="border-t pt-4">
-                  <h4 className="font-semibold mb-3 flex items-center gap-2">
+              {roomAssignment?.roommates && roomAssignment.roommates.length > 0 && (
+                <div className="border-t border-green-200 pt-4">
+                  <h4 className="font-semibold mb-3 flex items-center gap-2 text-green-800">
                     <Users className="w-4 h-4" />
                     Your Roommates ({roomAssignment.roommates.length})
                   </h4>
                   <div className="space-y-2">
                     {roomAssignment.roommates.map((roommate) => (
                       <div key={roommate.id} className="flex items-center gap-3 p-3 bg-white rounded-lg border">
-                        <div className="w-10 h-10 bg-primary rounded-full flex items-center justify-center text-primary-foreground font-semibold">
+                        <div className="w-10 h-10 bg-green-600 rounded-full flex items-center justify-center text-white font-semibold">
                           {roommate.name.charAt(0).toUpperCase()}
                         </div>
                         <div>
@@ -456,78 +401,92 @@ export default function BlocksPage() {
                 </div>
               )}
 
-              {(!roomAssignment.roommates || roomAssignment.roommates.length === 0) && (
-                <div className="border-t pt-4">
-                  <p className="text-sm text-muted-foreground">
+              {(!roomAssignment?.roommates || roomAssignment.roommates.length === 0) && (
+                <div className="border-t border-green-200 pt-4">
+                  <p className="text-sm text-green-700">
                     No roommates assigned yet. You may be the first person in this room!
                   </p>
                 </div>
               )}
+
+              <div className="border-t border-green-200 pt-4">
+                <Button asChild variant="outline" className="w-full">
+                  <Link href="/assignment">View Full Room Details</Link>
+                </Button>
+              </div>
             </CardContent>
           </Card>
         )}
 
-        {/* Create/Join Section */}
-        {!block && (
-          <Card className="mb-6">
+        {/* SCENARIO 2: User is NOT in a block and has no confirmed room - Show Create/Join options */}
+        {!block && !hasConfirmedRoomWithoutBlock && (
+          <Card className="mb-6 bg-white">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Home className="w-5 h-5" />
-                {roomAssignment ? 'Want to Form a Block?' : 'Get Started'}
+                <Users className="w-5 h-5 text-primary" />
+                Get Started with Blocks
               </CardTitle>
-              {roomAssignment && (
-                <CardDescription>
-                  Create or join a block to coordinate with friends for future housing
-                </CardDescription>
-              )}
+              <CardDescription>
+                Want to room with friends? Create a block and share the code, or join an existing block with a code from your friend.
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="grid md:grid-cols-2 gap-6">
                 {/* Create Block */}
-                <Card className="border-2 hover:border-primary transition">
-          <CardHeader>
+                <Card className="border-2 hover:border-primary transition hover:shadow-md">
+                  <CardHeader className="pb-3">
                     <CardTitle className="text-lg flex items-center gap-2">
                       <UserPlus className="w-5 h-5 text-primary" />
                       Create New Block
                     </CardTitle>
                     <CardDescription>
-                      Start a new private room and invite your friends to join
+                      Start a new block and invite your friends to join you
                     </CardDescription>
-          </CardHeader>
-          <CardContent>
-                    <Button onClick={createBlock} className="w-full" disabled={isLoading}>
-                      {isLoading ? 'Creating...' : 'Create Block'}
-                    </Button>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      <ul className="text-sm text-muted-foreground space-y-1">
+                        <li>• You&apos;ll get a unique 6-character code</li>
+                        <li>• Share the code with up to 3 friends</li>
+                        <li>• Everyone in the block gets the same room</li>
+                      </ul>
+                      <Button onClick={createBlock} className="w-full" disabled={isCreating}>
+                        {isCreating ? 'Creating...' : 'Create Block'}
+                      </Button>
+                    </div>
                   </CardContent>
                 </Card>
 
                 {/* Join Block */}
-                <Card className="border-2 hover:border-primary transition">
-                  <CardHeader>
+                <Card className="border-2 hover:border-primary transition hover:shadow-md">
+                  <CardHeader className="pb-3">
                     <CardTitle className="text-lg flex items-center gap-2">
                       <Users className="w-5 h-5 text-primary" />
                       Join Existing Block
                     </CardTitle>
                     <CardDescription>
-                      Enter the invite code shared by your friend
+                      Have a code from a friend? Enter it below to join their block
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-3">
                     <Input
                       type="text"
-                      placeholder="Enter code (e.g., ABC123)"
+                      placeholder="Enter 6-character code"
                       value={joinCode}
-                      onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                      onChange={(e) => {
+                        setJoinCode(e.target.value.toUpperCase());
+                        setError(null);
+                      }}
                       maxLength={6}
-                      className="uppercase"
+                      className="uppercase text-center text-lg tracking-widest font-mono"
                     />
                     <Button
                       onClick={joinBlock}
-                      disabled={!joinCode.trim() || isLoading}
+                      disabled={joinCode.length !== 6 || isJoining}
                       variant="secondary"
                       className="w-full"
                     >
-                      {isLoading ? 'Joining...' : 'Join Block'}
+                      {isJoining ? 'Joining...' : 'Join Block'}
                     </Button>
                   </CardContent>
                 </Card>
@@ -536,165 +495,132 @@ export default function BlocksPage() {
           </Card>
         )}
 
-        {/* Block Display Section */}
+        {/* SCENARIO 3: User IS in a block - Show block details */}
         {block && (
-          <Card>
-            <CardHeader>
-              <div className="flex justify-between items-start">
-              <div>
-                  <CardTitle>Your Block</CardTitle>
-                  <CardDescription>
-                    {block.members?.length || 0} of {block.maxMembers || 4} members
-                  </CardDescription>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {/* Invite Code Box */}
-              <Card className="bg-gradient-to-r from-primary/5 to-primary/10 border-primary/20">
-                <CardContent className="pt-6">
-                  <div className="flex items-center justify-between mb-3">
-                    <div>
-                      <p className="text-sm text-muted-foreground mb-1">Invite Code</p>
-                      <p className="text-3xl font-bold tracking-wider">{block.code}</p>
+          <>
+            {/* Room Assignment Card (if block has a room) */}
+            {roomAssignment && roomAssignment.room_number && (
+              <Card className="mb-6 border-2 border-green-200 bg-green-50">
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-green-800">
+                    <DoorOpen className="w-5 h-5" />
+                    Your Block&apos;s Room
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid md:grid-cols-3 gap-4">
+                    <div className="bg-white p-3 rounded-lg border">
+                      <p className="text-xs text-muted-foreground">Building</p>
+                      <p className="font-semibold">{roomAssignment.dorm_name || 'N/A'}</p>
                     </div>
-                    <Button
-                      onClick={copyCode}
-                      variant="outline"
-                      className="flex items-center gap-2"
-                    >
-                      {copied ? (
-                        <>
-                          <Check className="w-4 h-4" />
-                          <span>Copied!</span>
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="w-4 h-4" />
-                          <span>Copy Code</span>
-                        </>
-                      )}
-                    </Button>
-            </div>
-                  <p className="text-sm text-muted-foreground">
-                    Share this code with friends to invite them to your block
-                  </p>
+                    <div className="bg-white p-3 rounded-lg border">
+                      <p className="text-xs text-muted-foreground">Room</p>
+                      <p className="font-semibold">{roomAssignment.room_number}</p>
+                    </div>
+                    <div className="bg-white p-3 rounded-lg border">
+                      <p className="text-xs text-muted-foreground">Status</p>
+                      <p className="font-semibold text-green-600">{roomAssignment.status || 'Pending'}</p>
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
+            )}
 
-              {/* Members List */}
-              <div>
-                <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                  <Users className="w-5 h-5" />
-                  Block Members
-                </h3>
-                <div className="space-y-3">
-                  {block.members.map((member) => (
-                    <Card key={member.id} className="border">
-                      <CardContent className="pt-6">
-                        <div className="flex items-center gap-4">
-                          <div className="w-12 h-12 bg-primary rounded-full flex items-center justify-center text-primary-foreground font-semibold text-lg">
-                            {member.name.charAt(0).toUpperCase()}
-                          </div>
-                          <div className="flex-1">
-                            <p className="font-semibold flex items-center gap-2">
-                              {member.name}
-                              {(member.is_leader || member.id === block.creator?.id) && (
-                                <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded">
-                                  Creator
-                                </span>
-                              )}
-                              {member.id === currentStudent?.id && (
-                                <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded">
-                                  You
-                                </span>
-                              )}
-                            </p>
-                            <p className="text-sm text-muted-foreground">{member.email}</p>
-          </div>
-        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-
-                  {/* Empty Slots */}
-                  {[...Array(Math.max(0, (block.maxMembers || 4) - (block.members?.length || 0)))].map((_, index) => (
-                    <Card key={`empty-${index}`} className="border-2 border-dashed">
+            {/* Block Info Card */}
+            <Card className="bg-white">
+              <CardHeader>
+                <div className="flex justify-between items-start">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      <Home className="w-5 h-5" />
+                      Your Block
+                    </CardTitle>
+                    <CardDescription>
+                      {block.members?.length || 0} of {block.maxMembers || 4} members
+                      {isBlockLeader && ' • You are the block leader'}
+                    </CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Invite Code Box */}
+                <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
                   <CardContent className="pt-6">
-                        <div className="flex items-center gap-4">
-                          <div className="w-12 h-12 bg-muted rounded-full flex items-center justify-center">
-                            <UserPlus className="w-6 h-6 text-muted-foreground" />
-                          </div>
-                          <div className="flex-1">
-                            <p className="font-medium text-muted-foreground">Empty Slot</p>
-                            <p className="text-sm text-muted-foreground">Waiting for member...</p>
-                          </div>
+                    <div className="flex items-center justify-between mb-3">
+                      <div>
+                        <p className="text-sm text-muted-foreground mb-1">Your Block&apos;s Invite Code</p>
+                        <p className="text-4xl font-bold tracking-widest font-mono text-primary">{block.code}</p>
+                      </div>
+                      <Button
+                        onClick={copyCode}
+                        variant={copied ? "default" : "outline"}
+                        className="flex items-center gap-2"
+                      >
+                        {copied ? (
+                          <>
+                            <Check className="w-4 h-4" />
+                            <span>Copied!</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-4 h-4" />
+                            <span>Copy Code</span>
+                          </>
+                        )}
+                      </Button>
                     </div>
+                    <p className="text-sm text-muted-foreground">
+                      Share this code with friends so they can join your block
+                    </p>
                   </CardContent>
                 </Card>
-              ))}
-            </div>
-          </div>
-            </CardContent>
-          </Card>
-        )}
-          </div>
-        )}
 
-        {/* Notifications Tab Content */}
-        {activeTab === "notifications" && (
-          <Card className="bg-white">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Bell className="w-5 h-5" />
-                Notifications
-              </CardTitle>
-              <CardDescription>
-                View and respond to roommate requests.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {/* Pending Requests */}
-              {receivedRequests.length > 0 && (
+                {/* Members List */}
                 <div>
-                  <h3 className="text-lg font-semibold mb-3 text-primary">
-                    Pending Requests ({receivedRequests.length})
+                  <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                    <Users className="w-5 h-5" />
+                    Block Members ({block.members?.length || 0}/{block.maxMembers || 4})
                   </h3>
                   <div className="space-y-3">
-                    {receivedRequests.map((request) => (
-                      <Card key={request.request_id} className="border-2 border-primary/20 bg-primary/5">
+                    {block.members.map((member) => (
+                      <Card key={member.id} className={`border ${member.id === currentStudent?.id ? 'border-green-300 bg-green-50' : ''}`}>
                         <CardContent className="py-4">
-                          <div className="flex justify-between items-start gap-4">
-                            <div className="flex-1">
-                              <p className="font-semibold">
-                                {request.sender.first_name} {request.sender.last_name}
-                              </p>
-                              <p className="text-sm text-muted-foreground">
-                                {request.sender.email}
-                              </p>
-                              {request.message && (
-                                <p className="text-sm mt-2 italic">"{request.message}"</p>
-                              )}
-                              {request.block_code && (
-                                <p className="text-sm mt-1">
-                                  Block code: <span className="font-mono font-bold">{request.block_code}</span>
-                                </p>
-                              )}
+                          <div className="flex items-center gap-4">
+                            <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-semibold text-lg ${member.is_leader || member.id === block.creator?.id ? 'bg-primary' : 'bg-gray-500'}`}>
+                              {member.name.charAt(0).toUpperCase()}
                             </div>
-                            <div className="flex gap-2">
-                              <Button
-                                size="sm"
-                                onClick={() => handleRespondToRequest(request.request_id, 'Accepted')}
-                              >
-                                Accept
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleRespondToRequest(request.request_id, 'Declined')}
-                              >
-                                Decline
-                              </Button>
+                            <div className="flex-1">
+                              <p className="font-semibold flex items-center gap-2 flex-wrap">
+                                {member.name}
+                                {(member.is_leader || member.id === block.creator?.id) && (
+                                  <span className="text-xs bg-primary text-white px-2 py-0.5 rounded">
+                                    Leader
+                                  </span>
+                                )}
+                                {member.id === currentStudent?.id && (
+                                  <span className="text-xs bg-green-600 text-white px-2 py-0.5 rounded">
+                                    You
+                                  </span>
+                                )}
+                              </p>
+                              <p className="text-sm text-muted-foreground">{member.email}</p>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+
+                    {/* Empty Slots */}
+                    {[...Array(Math.max(0, (block.maxMembers || 4) - (block.members?.length || 0)))].map((_, index) => (
+                      <Card key={`empty-${index}`} className="border-2 border-dashed border-gray-200 bg-gray-50">
+                        <CardContent className="py-4">
+                          <div className="flex items-center gap-4">
+                            <div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center">
+                              <UserPlus className="w-6 h-6 text-gray-400" />
+                            </div>
+                            <div className="flex-1">
+                              <p className="font-medium text-gray-400">Empty Slot</p>
+                              <p className="text-sm text-gray-400">Share your code to invite a friend</p>
                             </div>
                           </div>
                         </CardContent>
@@ -702,58 +628,19 @@ export default function BlocksPage() {
                     ))}
                   </div>
                 </div>
-              )}
 
-              {/* Activity Log */}
-              <div>
-                <h3 className="text-lg font-semibold mb-3">Activity Log</h3>
-                {notifications.length === 0 && receivedRequests.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    No notifications yet. Send a roommate request to see it appear here.
-                  </p>
-                ) : notifications.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    No recent activity.
-                  </p>
-                ) : (
-                  <div className="space-y-3">
-                    {notifications
-                      .slice()
-                      .reverse()
-                      .map((notification) => (
-                        <Card key={notification.id} className="border">
-                          <CardContent className="py-4">
-                            <div className="flex justify-between items-start gap-4">
-                              <div>
-                                <p className="font-semibold">
-                                  {notification.roomCode
-                                    ? `Invite sent to ${notification.roommateName}`
-                                    : notification.roommateName}
-                                </p>
-                                <p className="text-sm text-muted-foreground">
-                                  {notification.message}
-                                  {notification.roomCode && (
-                                    <span className="ml-2 font-mono font-medium">
-                                      ({notification.roomCode})
-                                    </span>
-                                  )}
-                                </p>
-                              </div>
-                              <span className="text-xs text-muted-foreground">
-                                {new Date(notification.timestamp).toLocaleTimeString([], {
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                })}
-                              </span>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      ))}
+                {/* Helpful tip */}
+                {(block.members?.length || 0) < (block.maxMembers || 4) && (
+                  <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                    <p className="text-sm text-blue-700">
+                      <strong>Tip:</strong> You have {(block.maxMembers || 4) - (block.members?.length || 0)} empty slot(s). 
+                      Share your code <span className="font-mono font-bold">{block.code}</span> with friends to fill your block!
+                    </p>
                   </div>
                 )}
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          </>
         )}
         </div>
       </div>

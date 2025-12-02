@@ -506,17 +506,79 @@ export async function DELETE(request: NextRequest) {
       )
     }
 
-    // Delete from block_members first (foreign key constraint)
-    const { error: blockMemberError } = await supabaseAdmin
+    // ============================================
+    // STEP 1: Handle block membership cleanup
+    // ============================================
+    
+    // Check if student is in a block
+    const { data: blockMembership } = await supabaseAdmin
       .from('block_members')
-      .delete()
+      .select('block_id, is_leader')
       .eq('student_id', studentId)
+      .maybeSingle()
 
-    if (blockMemberError) {
-      console.error('Error deleting block membership:', blockMemberError)
+    if (blockMembership) {
+      const blockId = blockMembership.block_id
+      const wasLeader = blockMembership.is_leader
+
+      // Remove student from block_members
+      await supabaseAdmin
+        .from('block_members')
+        .delete()
+        .eq('student_id', studentId)
+
+      // Check how many members remain in the block
+      const { data: remainingMembers } = await supabaseAdmin
+        .from('block_members')
+        .select('student_id, is_leader')
+        .eq('block_id', blockId)
+
+      if (!remainingMembers || remainingMembers.length === 0) {
+        // Block is now empty - delete it entirely
+        console.log(`Block ${blockId} is now empty, deleting...`)
+        
+        // First, clear block_id from any room_assignments that reference this block
+        await supabaseAdmin
+          .from('room_assignments')
+          .update({ block_id: null })
+          .eq('block_id', blockId)
+
+        // Then delete the block
+        await supabaseAdmin
+          .from('student_blocks')
+          .delete()
+          .eq('block_id', blockId)
+      } else {
+        // Block still has members
+        if (wasLeader) {
+          // Transfer leadership to another member
+          const newLeader = remainingMembers[0]
+          console.log(`Transferring leadership of block ${blockId} to ${newLeader.student_id}`)
+          
+          await supabaseAdmin
+            .from('block_members')
+            .update({ is_leader: true })
+            .eq('block_id', blockId)
+            .eq('student_id', newLeader.student_id)
+
+          // Update block_leader_id in student_blocks
+          await supabaseAdmin
+            .from('student_blocks')
+            .update({ block_leader_id: newLeader.student_id })
+            .eq('block_id', blockId)
+        }
+
+        // Update block capacity to reflect actual member count
+        await supabaseAdmin
+          .from('student_blocks')
+          .update({ current_capacity: remainingMembers.length })
+          .eq('block_id', blockId)
+      }
     }
 
-    // Delete room assignment
+    // ============================================
+    // STEP 2: Delete room assignment
+    // ============================================
     const { error: assignmentError } = await supabaseAdmin
       .from('room_assignments')
       .delete()
@@ -526,7 +588,9 @@ export async function DELETE(request: NextRequest) {
       console.error('Error deleting room assignment:', assignmentError)
     }
 
-    // Delete student preferences
+    // ============================================
+    // STEP 3: Delete student preferences
+    // ============================================
     const { error: preferencesError } = await supabaseAdmin
       .from('student_preferences')
       .delete()

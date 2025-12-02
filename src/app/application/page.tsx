@@ -398,7 +398,11 @@ export default function ApplicationPage() {
         setSuccess(true);
         setIsSubmitted(true);
         setSuccessMessage("Successfully joined block! You've been assigned to your friend's room.");
-        setIsLoading(false);
+        
+        // Redirect to assignment page after a short delay
+        setTimeout(() => {
+          router.push('/assignment');
+        }, 1500);
         return;
       }
 
@@ -425,7 +429,11 @@ export default function ApplicationPage() {
         setSuccessMessage(data.message);
         setError(""); // Clear any errors
       }
-      // Stay on the same page - form will be grayed out automatically
+      
+      // Redirect to assignment page after a short delay
+      setTimeout(() => {
+        router.push('/assignment');
+      }, 1500);
 
     } catch (err: any) {
       setError(err.message || 'An error occurred. Please try again.');
