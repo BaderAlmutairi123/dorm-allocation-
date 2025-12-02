@@ -146,12 +146,15 @@ export default function ApplicationPage() {
     major: "",
     year: "",
     roomType: "",
-    assignmentPreference: "", // "random" = match with others, "private" = empty room + block to invite friends
+    assignmentPreference: "", // "random" = match with others, "private" = empty room + block to invite friends, "join" = join existing block
     bedtime: "",
     noiseLevel: "",
     cleanlinessLevel: "",
     guestPolicy: "",
   });
+  const [joinBlockCode, setJoinBlockCode] = useState("");
+  const [joinBlockError, setJoinBlockError] = useState("");
+  const [joinBlockSuccess, setJoinBlockSuccess] = useState(false);
 
   // Check if single room is selected (no roommate preferences needed)
   const isSingleRoom = formData.roomType === "Single";
@@ -358,12 +361,48 @@ export default function ApplicationPage() {
     e.preventDefault();
     setIsLoading(true);
     setError("");
+    setJoinBlockError("");
 
     try {
       // Get the auth token from Supabase session
       const session = await authClient.getSession();
       const token = session?.access_token;
 
+      // If joining a block, validate and join first
+      if (formData.assignmentPreference === 'join') {
+        if (!joinBlockCode.trim() || joinBlockCode.length !== 6) {
+          setJoinBlockError("Please enter a valid 6-character block code");
+          setIsLoading(false);
+          return;
+        }
+
+        // Try to join the block
+        const joinResponse = await fetch('/api/blocks/join', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token && { 'Authorization': `Bearer ${token}` }),
+          },
+          body: JSON.stringify({ code: joinBlockCode, roomType: formData.roomType }),
+        });
+
+        const joinData = await joinResponse.json();
+
+        if (!joinResponse.ok) {
+          setJoinBlockError(joinData.error || 'Failed to join block');
+          setIsLoading(false);
+          return;
+        }
+
+        setJoinBlockSuccess(true);
+        setSuccess(true);
+        setIsSubmitted(true);
+        setSuccessMessage("Successfully joined block! You've been assigned to your friend's room.");
+        setIsLoading(false);
+        return;
+      }
+
+      // Regular application submission
       const response = await fetch('/api/application', {
         method: 'POST',
         headers: {
@@ -682,6 +721,23 @@ export default function ApplicationPage() {
                     <div className="space-y-3 p-4 bg-blue-50 border border-blue-200 rounded-lg">
                       <Label className="text-base font-semibold">How would you like to be assigned?</Label>
                       <div className="space-y-3">
+                        <label className={`flex items-start gap-3 p-3 rounded-lg border-2 cursor-pointer transition ${formData.assignmentPreference === 'join' ? 'border-blue-500 bg-blue-100' : 'border-gray-200 bg-white hover:border-gray-300'} ${isSubmitted ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                          <input
+                            type="radio"
+                            name="assignmentPreference"
+                            value="join"
+                            checked={formData.assignmentPreference === 'join'}
+                            onChange={(e) => handleInputChange("assignmentPreference", e.target.value)}
+                            disabled={isSubmitted}
+                            className="mt-1"
+                          />
+                          <div>
+                            <p className="font-medium">Join a friend&apos;s block</p>
+                            <p className="text-sm text-muted-foreground">
+                              Enter your friend&apos;s block code to join their room
+                            </p>
+                          </div>
+                        </label>
                         <label className={`flex items-start gap-3 p-3 rounded-lg border-2 cursor-pointer transition ${formData.assignmentPreference === 'random' ? 'border-blue-500 bg-blue-100' : 'border-gray-200 bg-white hover:border-gray-300'} ${isSubmitted ? 'opacity-50 cursor-not-allowed' : ''}`}>
                           <input
                             type="radio"
@@ -717,6 +773,35 @@ export default function ApplicationPage() {
                           </div>
                         </label>
                       </div>
+                    </div>
+                  )}
+
+                  {/* Join Block Code Input - Show when join option selected */}
+                  {needsRoommateOptions && formData.assignmentPreference === 'join' && (
+                    <div className="p-4 bg-green-50 border border-green-200 rounded-lg space-y-3">
+                      <p className="text-green-700 font-medium">🔗 Join a Friend&apos;s Block</p>
+                      <p className="text-sm text-green-600">
+                        Enter the 6-character block code your friend shared with you.
+                      </p>
+                      <Input
+                        type="text"
+                        placeholder="Enter code (e.g., ABC123)"
+                        value={joinBlockCode}
+                        onChange={(e) => {
+                          setJoinBlockCode(e.target.value.toUpperCase());
+                          setJoinBlockError("");
+                          setJoinBlockSuccess(false);
+                        }}
+                        maxLength={6}
+                        className="uppercase bg-white"
+                        disabled={isSubmitted || joinBlockSuccess}
+                      />
+                      {joinBlockError && (
+                        <p className="text-red-600 text-sm">{joinBlockError}</p>
+                      )}
+                      {joinBlockSuccess && (
+                        <p className="text-green-700 text-sm font-medium">✓ Successfully joined block! You&apos;ll be assigned to your friend&apos;s room.</p>
+                      )}
                     </div>
                   )}
 

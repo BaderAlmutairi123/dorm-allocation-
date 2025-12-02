@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
     const dbClient = supabaseAdmin || supabase
 
     const body = await request.json()
-    const { code } = body
+    const { code, roomType } = body
 
     if (!code || typeof code !== 'string') {
       return NextResponse.json(
@@ -80,6 +80,19 @@ export async function POST(request: NextRequest) {
         { error: 'Invalid block code. Please check and try again.' },
         { status: 404 }
       )
+    }
+
+    // Validate room type compatibility if provided
+    // Double room = max_capacity of 2, Suite = max_capacity of 4
+    if (roomType) {
+      const expectedCapacity = roomType === 'Suite' ? 4 : 2
+      if (block.max_capacity !== expectedCapacity) {
+        const blockRoomType = block.max_capacity === 4 ? 'Suite (4 people)' : 'Double (2 people)'
+        return NextResponse.json(
+          { error: `This block is for a ${blockRoomType}. You selected ${roomType}. Please select the matching room type.` },
+          { status: 400 }
+        )
+      }
     }
 
     // Check if block is full

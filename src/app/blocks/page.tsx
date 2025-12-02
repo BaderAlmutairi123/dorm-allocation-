@@ -242,36 +242,6 @@ export default function BlocksPage() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const leaveBlock = async () => {
-    if (!block) return;
-    setError(null);
-
-    try {
-      const session = await authClient.getSession();
-      const headers: HeadersInit = session?.access_token 
-        ? { 'Authorization': `Bearer ${session.access_token}` } 
-        : {};
-
-      const response = await fetch(`/api/blocks/${block.id}`, {
-        method: 'DELETE',
-        headers,
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        setError(data.error || 'Failed to leave block');
-        return;
-      }
-
-      setBlock(null);
-      setJoinCode("");
-    } catch (error: any) {
-      console.error('Error leaving block:', error);
-      setError(error.message || 'Failed to leave block');
-    }
-  };
-
   // Load received requests when notifications tab is active
   useEffect(() => {
     if (activeTab === 'notifications' && !isLoadingRequests) {
@@ -577,14 +547,6 @@ export default function BlocksPage() {
                     {block.members?.length || 0} of {block.maxMembers || 4} members
                   </CardDescription>
                 </div>
-                <Button
-                  onClick={leaveBlock}
-                  variant="ghost"
-                  className="text-destructive hover:text-destructive"
-                  disabled={isLoading}
-                >
-                  {isLoading ? 'Leaving...' : 'Leave Block'}
-                </Button>
               </div>
             </CardHeader>
             <CardContent className="space-y-6">
