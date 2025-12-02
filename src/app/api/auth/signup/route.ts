@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
       const { error: profileError } = await supabaseServer
         .from('students')
         .insert({
-          id: authData.user.id,
+          student_id: authData.user.id,
           email,
           first_name: firstName,
           last_name: lastName,
