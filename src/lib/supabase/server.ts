@@ -15,7 +15,19 @@ if (!supabaseAnonKey) {
   throw new Error('Missing NEXT_PUBLIC_SUPABASE_ANON_KEY environment variable')
 }
 
-export const supabaseServer = createClient(supabaseUrl, supabaseAnonKey, {
+// Function to create a server-side Supabase client (for API routes)
+// Returns a promise to maintain compatibility with existing code
+export async function supabaseServer() {
+  return createClient(supabaseUrl!, supabaseAnonKey!, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false
+    }
+  })
+}
+
+// Also export as a constant for direct usage
+export const supabaseServerClient = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     autoRefreshToken: false,
     persistSession: false

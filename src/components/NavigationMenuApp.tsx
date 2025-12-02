@@ -1,3 +1,5 @@
+
+
 'use client'
 
 import Link from "next/link";
@@ -12,6 +14,7 @@ import {
 import { useEffect, useState } from "react";
 import { authClient } from "@/lib/supabase/auth";
 import { usePathname } from "next/navigation";
+import { Menu } from "lucide-react";
 
 export default function NavigationMenuApp() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -21,14 +24,18 @@ export default function NavigationMenuApp() {
   // Get current page name based on pathname
   const getPageName = () => {
     switch (pathname) {
+      case '/dashboard':
+        return 'Dashboard';
       case '/application':
-        return 'Dorm Application';
+        return 'Application';
+      case '/assignment':
+        return 'My Assignment';
       case '/blocks':
-        return 'Student Block';
+        return 'Blocks';
       case '/roommates':
-        return 'Potential Roommates';
+        return 'Roommates';
       default:
-        return 'Dorm Application';
+        return 'Menu';
     }
   };
 
@@ -91,10 +98,31 @@ export default function NavigationMenuApp() {
     <NavigationMenu>
       <NavigationMenuList>
         <NavigationMenuItem>
-          <NavigationMenuTrigger>{getPageName()}</NavigationMenuTrigger>
+          <NavigationMenuTrigger className="flex items-center gap-2">
+            <Menu className="h-5 w-5" />
+            <span className="hidden sm:inline">{getPageName()}</span>
+          </NavigationMenuTrigger>
           <NavigationMenuContent>
-            <ul className="grid gap-3 p-4 md:w-[400px]">
-
+            <ul className="grid gap-3 p-4 md:w-[500px] grid-cols-2">
+              <li>
+                <NavigationMenuLink asChild>
+                  <Link
+                    href="/dashboard"
+                    className="block rounded-md p-2 hover:bg-accent"
+                    onClick={(e) => handleProtectedClick(e, '/dashboard')}
+                  >
+                    <div className="font-medium">
+                      Dashboard
+                      {!isAuthenticated && <span className="text-xs text-red-500 ml-2">🔒</span>}
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      {isAuthenticated
+                        ? "View your application status and quick actions"
+                        : "Sign in required"}
+                    </p>
+                  </Link>
+                </NavigationMenuLink>
+              </li>
               <li>
                 <NavigationMenuLink asChild>
                   <Link
@@ -103,13 +131,32 @@ export default function NavigationMenuApp() {
                     onClick={(e) => handleProtectedClick(e, '/application')}
                   >
                     <div className="font-medium">
-                      Dorm Application
+                      Application
                       {!isAuthenticated && <span className="text-xs text-red-500 ml-2">🔒</span>}
                     </div>
                     <p className="text-sm text-muted-foreground">
                       {isAuthenticated
-                        ? "Step-by-step guide to submitting your dorm application."
-                        : "Sign in required - Click to go to sign in page"}
+                        ? "Submit or update your dorm application"
+                        : "Sign in required"}
+                    </p>
+                  </Link>
+                </NavigationMenuLink>
+              </li>
+              <li>
+                <NavigationMenuLink asChild>
+                  <Link
+                    href="/assignment"
+                    className="block rounded-md p-2 hover:bg-accent"
+                    onClick={(e) => handleProtectedClick(e, '/assignment')}
+                  >
+                    <div className="font-medium">
+                      My Assignment
+                      {!isAuthenticated && <span className="text-xs text-red-500 ml-2">🔒</span>}
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      {isAuthenticated
+                        ? "View your room assignment and roommates"
+                        : "Sign in required"}
                     </p>
                   </Link>
                 </NavigationMenuLink>
@@ -122,18 +169,17 @@ export default function NavigationMenuApp() {
                     onClick={(e) => handleProtectedClick(e, '/blocks')}
                   >
                     <div className="font-medium">
-                      Student Block
+                      Blocks
                       {!isAuthenticated && <span className="text-xs text-red-500 ml-2">🔒</span>}
                     </div>
                     <p className="text-sm text-muted-foreground">
                       {isAuthenticated
-                        ? "Choose preferred buildings/floors and block options."
-                        : "Sign in required - Click to go to sign in page"}
+                        ? "Create or join a student block"
+                        : "Sign in required"}
                     </p>
                   </Link>
                 </NavigationMenuLink>
               </li>
-            
             </ul>
           </NavigationMenuContent>
         </NavigationMenuItem>
