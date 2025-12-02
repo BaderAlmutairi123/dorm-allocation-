@@ -205,8 +205,13 @@ export async function POST(request: NextRequest) {
 
     if (supabaseAdmin) {
       try {
+        // OPTION 0: Join block pending - student will join a block separately, don't create assignment yet
+        if (assignmentPreference === 'join_block_pending') {
+          // Don't create any block or assignment - the join block API will handle this
+          blockId = null
+        }
         // OPTION 1: Single room - no block needed
-        if (assignmentPreference === 'single' || roomType === 'Single') {
+        else if (assignmentPreference === 'single' || roomType === 'Single') {
           // No block creation for single rooms
           blockId = null
         }
@@ -348,80 +353,84 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Create or update a pending room assignment
-    const assignmentData: any = {
-      block_id: blockId, // Will be null if no match found
-      room_id: null, // Will be assigned later by matching algorithm
-      status: 'Pending',
-    }
-
-    // Check if room assignment already exists (student_id is unique)
-    const { data: existingAssignment, error: checkError } = await supabase
-      .from('room_assignments')
-      .select('assignment_id, student_id, room_id')
-      .eq('student_id', studentId)
-      .maybeSingle() // Use maybeSingle() instead of single() to avoid errors when no record exists
-
-    let assignmentError
-
-    if (checkError && checkError.code !== 'PGRST116') {
-      // PGRST116 is "not found" which is fine, other errors are real problems
-      console.error('Error checking for existing assignment:', checkError)
-    }
-
-    if (existingAssignment) {
-      // Update existing assignment (student resubmitting application)
-      // Only update if status is Pending or if we want to reset a Confirmed assignment
-      const { error } = await supabase
-        .from('room_assignments')
-        .update({
-          ...assignmentData,
-          // Reset room_id if updating from Confirmed back to Pending
-          room_id: assignmentData.status === 'Pending' ? null : existingAssignment.room_id,
-        })
-        .eq('student_id', studentId)
-      assignmentError = error
-    } else {
-      // Insert new assignment - use upsert to handle race conditions
-      const { error } = await supabase
-        .from('room_assignments')
-        .upsert({
-          ...assignmentData,
-          student_id: studentId,
-        }, {
-          onConflict: 'student_id', // Use student_id as the conflict resolution key
-          ignoreDuplicates: false
-        })
-      assignmentError = error
-    }
-
-    if (assignmentError) {
-      console.error('Error saving room assignment:', assignmentError)
-      // If it's a duplicate key error, try to update instead
-      if (assignmentError.code === '23505') {
-        console.log('Duplicate key detected, attempting update instead...')
-        const { error: updateError } = await supabase
-          .from('room_assignments')
-          .update(assignmentData)
-          .eq('student_id', studentId)
-        
-        if (updateError) {
-          console.error('Error updating room assignment after duplicate key:', updateError)
-        }
+    // Create or update a pending room assignment (skip for join_block_pending)
+    if (assignmentPreference !== 'join_block_pending') {
+      const assignmentData: any = {
+        block_id: blockId, // Will be null if no match found
+        room_id: null, // Will be assigned later by matching algorithm
+        status: 'Pending',
       }
-      // Continue even if assignment creation fails - don't break the application submission
-    }
 
-    // Run matching algorithm automatically in the background
-    // Don't wait for it or fail the request if it errors
-    runMatchingAlgorithm().catch(error => {
-      console.error('Error running automatic matching after application submission:', error)
-      // Don't throw - this is a background process
-    })
+      // Check if room assignment already exists (student_id is unique)
+      const { data: existingAssignment, error: checkError } = await supabase
+        .from('room_assignments')
+        .select('assignment_id, student_id, room_id')
+        .eq('student_id', studentId)
+        .maybeSingle() // Use maybeSingle() instead of single() to avoid errors when no record exists
+
+      let assignmentError
+
+      if (checkError && checkError.code !== 'PGRST116') {
+        // PGRST116 is "not found" which is fine, other errors are real problems
+        console.error('Error checking for existing assignment:', checkError)
+      }
+
+      if (existingAssignment) {
+        // Update existing assignment (student resubmitting application)
+        // Only update if status is Pending or if we want to reset a Confirmed assignment
+        const { error } = await supabase
+          .from('room_assignments')
+          .update({
+            ...assignmentData,
+            // Reset room_id if updating from Confirmed back to Pending
+            room_id: assignmentData.status === 'Pending' ? null : existingAssignment.room_id,
+          })
+          .eq('student_id', studentId)
+        assignmentError = error
+      } else {
+        // Insert new assignment - use upsert to handle race conditions
+        const { error } = await supabase
+          .from('room_assignments')
+          .upsert({
+            ...assignmentData,
+            student_id: studentId,
+          }, {
+            onConflict: 'student_id', // Use student_id as the conflict resolution key
+            ignoreDuplicates: false
+          })
+        assignmentError = error
+      }
+
+      if (assignmentError) {
+        console.error('Error saving room assignment:', assignmentError)
+        // If it's a duplicate key error, try to update instead
+        if (assignmentError.code === '23505') {
+          console.log('Duplicate key detected, attempting update instead...')
+          const { error: updateError } = await supabase
+            .from('room_assignments')
+            .update(assignmentData)
+            .eq('student_id', studentId)
+          
+          if (updateError) {
+            console.error('Error updating room assignment after duplicate key:', updateError)
+          }
+        }
+        // Continue even if assignment creation fails - don't break the application submission
+      }
+
+      // Run matching algorithm automatically in the background
+      // Don't wait for it or fail the request if it errors
+      runMatchingAlgorithm().catch(error => {
+        console.error('Error running automatic matching after application submission:', error)
+        // Don't throw - this is a background process
+      })
+    }
 
     // Determine response message based on assignment preference
     let message = 'Application submitted successfully.'
-    if (assignmentPreference === 'single' || roomType === 'Single') {
+    if (assignmentPreference === 'join_block_pending') {
+      message = 'Student information saved. Ready to join block.'
+    } else if (assignmentPreference === 'single' || roomType === 'Single') {
       message = 'Application submitted successfully. You\'ll be assigned a single room.'
     } else if (assignmentPreference === 'private' && blockCode) {
       message = `Application submitted successfully. Your block code is: ${blockCode}. Share this with friends to have them join your room!`

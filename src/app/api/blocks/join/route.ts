@@ -121,15 +121,26 @@ export async function POST(request: NextRequest) {
     }
 
     // Update block capacity by counting actual members
-    const { data: allMembers } = await dbClient
+    const { data: allMembers, error: countError } = await dbClient
       .from('block_members')
       .select('student_id')
       .eq('block_id', block.block_id)
 
-    await dbClient
+    if (countError) {
+      console.error('Error counting block members:', countError)
+    }
+
+    const memberCount = allMembers?.length || 1
+    console.log(`Block ${block.block_id} now has ${memberCount} members after join`)
+
+    const { error: updateError } = await dbClient
       .from('student_blocks')
-      .update({ current_capacity: allMembers?.length || 1 })
+      .update({ current_capacity: memberCount })
       .eq('block_id', block.block_id)
+
+    if (updateError) {
+      console.error('Error updating block capacity:', updateError)
+    }
 
     // Find the block leader's room assignment and update joining student's assignment
     const { data: blockLeader } = await dbClient

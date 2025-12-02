@@ -368,7 +368,7 @@ export default function ApplicationPage() {
       const session = await authClient.getSession();
       const token = session?.access_token;
 
-      // If joining a block, validate and join first
+      // If joining a block, first save basic student info, then join the block
       if (formData.assignmentPreference === 'join') {
         if (!joinBlockCode.trim() || joinBlockCode.length !== 6) {
           setJoinBlockError("Please enter a valid 6-character block code");
@@ -376,7 +376,28 @@ export default function ApplicationPage() {
           return;
         }
 
-        // Try to join the block
+        // First, save the student's basic info (so they have a record in the students table)
+        const studentResponse = await fetch('/api/application', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token && { 'Authorization': `Bearer ${token}` }),
+          },
+          body: JSON.stringify({
+            ...formData,
+            // Override assignment preference to prevent creating a separate block
+            assignmentPreference: 'join_block_pending',
+          }),
+        });
+
+        if (!studentResponse.ok) {
+          const studentData = await studentResponse.json();
+          setError(studentData.error || 'Failed to save student information');
+          setIsLoading(false);
+          return;
+        }
+
+        // Now try to join the block
         const joinResponse = await fetch('/api/blocks/join', {
           method: 'POST',
           headers: {
