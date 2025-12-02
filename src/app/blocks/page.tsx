@@ -73,6 +73,13 @@ export default function BlocksPage() {
   const [error, setError] = useState<string | null>(null);
   const [receivedRequests, setReceivedRequests] = useState<ReceivedRequest[]>([]);
   const [isLoadingRequests, setIsLoadingRequests] = useState(false);
+  const [roomAssignment, setRoomAssignment] = useState<{
+    room_number?: string;
+    room_type?: string;
+    dorm_name?: string;
+    status?: string;
+    roommates?: BlockMember[];
+  } | null>(null);
 
   // Set active tab from URL query parameter
   useEffect(() => {
@@ -183,15 +190,34 @@ export default function BlocksPage() {
 
             // Load user's block
             const session = await authClient.getSession();
-            const blockResponse = await fetch('/api/blocks', {
-              headers: session?.access_token ? {
-                'Authorization': `Bearer ${session.access_token}`
-              } : {}
-            });
+            const authHeaders: HeadersInit = session?.access_token 
+              ? { 'Authorization': `Bearer ${session.access_token}` } 
+              : {};
+            
+            const blockResponse = await fetch('/api/blocks', { headers: authHeaders });
             if (blockResponse.ok) {
               const blockData = await blockResponse.json();
               if (blockData.block) {
                 setBlock(blockData.block);
+              }
+            }
+
+            // Also load room assignment to show roommates even without a formal block
+            const assignmentResponse = await fetch(`/api/assignments/${user.id}`, { headers: authHeaders });
+            if (assignmentResponse.ok) {
+              const assignmentData = await assignmentResponse.json();
+              if (assignmentData.assignment && assignmentData.assignment.room) {
+                setRoomAssignment({
+                  room_number: assignmentData.assignment.room.room_number,
+                  room_type: assignmentData.assignment.room.room_type,
+                  dorm_name: assignmentData.assignment.room.dorm?.dorm_name,
+                  status: assignmentData.assignment.status,
+                  roommates: assignmentData.assignment.roommates?.map((r: any) => ({
+                    id: r.student_id,
+                    name: `${r.first_name} ${r.last_name}`,
+                    email: r.email,
+                  })) || [],
+                });
               }
             }
           }
@@ -537,14 +563,81 @@ export default function BlocksPage() {
         {/* Block Tab Content */}
         {activeTab === "block" && (
           <div>
+        {/* Room Assignment Info (when user has a room but no block) */}
+        {!block && roomAssignment && roomAssignment.status === 'Confirmed' && (
+          <Card className="mb-6 border-2 border-green-200 bg-green-50">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-green-800">
+                <Home className="w-5 h-5" />
+                Your Room Assignment
+              </CardTitle>
+              <CardDescription className="text-green-700">
+                You&apos;ve been assigned to a room! Here are your details.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid md:grid-cols-3 gap-4">
+                <div>
+                  <p className="text-sm text-muted-foreground">Building</p>
+                  <p className="font-semibold">{roomAssignment.dorm_name || 'N/A'}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Room</p>
+                  <p className="font-semibold">{roomAssignment.room_number || 'N/A'}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Room Type</p>
+                  <p className="font-semibold">{roomAssignment.room_type || 'N/A'}</p>
+                </div>
+              </div>
+
+              {/* Roommates */}
+              {roomAssignment.roommates && roomAssignment.roommates.length > 0 && (
+                <div className="border-t pt-4">
+                  <h4 className="font-semibold mb-3 flex items-center gap-2">
+                    <Users className="w-4 h-4" />
+                    Your Roommates ({roomAssignment.roommates.length})
+                  </h4>
+                  <div className="space-y-2">
+                    {roomAssignment.roommates.map((roommate) => (
+                      <div key={roommate.id} className="flex items-center gap-3 p-3 bg-white rounded-lg border">
+                        <div className="w-10 h-10 bg-primary rounded-full flex items-center justify-center text-primary-foreground font-semibold">
+                          {roommate.name.charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                          <p className="font-medium">{roommate.name}</p>
+                          <p className="text-sm text-muted-foreground">{roommate.email}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {(!roomAssignment.roommates || roomAssignment.roommates.length === 0) && (
+                <div className="border-t pt-4">
+                  <p className="text-sm text-muted-foreground">
+                    No roommates assigned yet. You may be the first person in this room!
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
         {/* Create/Join Section */}
         {!block && (
           <Card className="mb-6">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Home className="w-5 h-5" />
-                Get Started
+                {roomAssignment ? 'Want to Form a Block?' : 'Get Started'}
               </CardTitle>
+              {roomAssignment && (
+                <CardDescription>
+                  Create or join a block to coordinate with friends for future housing
+                </CardDescription>
+              )}
             </CardHeader>
             <CardContent>
               <div className="grid md:grid-cols-2 gap-6">

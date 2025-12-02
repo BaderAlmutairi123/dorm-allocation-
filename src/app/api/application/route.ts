@@ -17,6 +17,7 @@ export async function POST(request: NextRequest) {
       major,
       year,
       roomType,
+      assignmentPreference, // "random", "private", or "single"
       bedtime,
       noiseLevel,
       cleanlinessLevel,
@@ -197,176 +198,140 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Try to find compatible students and create/join a block
+    // Handle room assignment based on preference
     let blockId: number | null = null
     let matchedStudents: string[] = []
+    let blockCode: string | null = null
 
-    if (supabaseAdmin && (roomType || bedtime || noiseLevel || cleanlinessLevel || guestPolicy)) {
+    if (supabaseAdmin) {
       try {
-        // Get current student data with preferences
-        const currentStudent = {
-          student_id: studentId,
-          first_name: firstName,
-          last_name: lastName,
-          email: email,
-          gender: gender,
-          year_level: String(yearLevelNumber),
-          major: major || null,
-          preferences: {
-            preferred_room_type: roomType || null,
-            bedtime: bedtime || null,
-            noise_level: noiseLevel ? parseInt(noiseLevel) : null,
-            cleanliness_level: cleanlinessLevel ? parseInt(cleanlinessLevel) : null,
-            guest_policy_preference: guestPolicy ? parseInt(guestPolicy) : null,
+        // OPTION 1: Single room - no block needed
+        if (assignmentPreference === 'single' || roomType === 'Single') {
+          // No block creation for single rooms
+          blockId = null
+        }
+        // OPTION 2: Private room - create empty block for student to invite friends
+        else if (assignmentPreference === 'private') {
+          // Generate a unique block code
+          blockCode = `${Math.random().toString(36).substring(2, 8).toUpperCase()}`
+          
+          // Create new block with just this student
+          const { data: newBlock, error: blockError } = await supabaseAdmin
+            .from('student_blocks')
+            .insert({
+              code: blockCode,
+              block_leader_id: studentId,
+              max_capacity: roomType === 'Suite' ? 4 : 2,
+              current_capacity: 1,
+            })
+            .select('block_id, code')
+            .single()
+
+          if (!blockError && newBlock) {
+            blockId = newBlock.block_id
+            blockCode = newBlock.code
+
+            // Add student as leader of the block
+            await supabaseAdmin
+              .from('block_members')
+              .insert({
+                block_id: blockId,
+                student_id: studentId,
+                is_leader: true,
+                joined_date: new Date().toISOString().split('T')[0],
+              })
           }
         }
-
-        // Find other pending students with same gender
-        const { data: pendingAssignments } = await supabaseAdmin
-          .from('room_assignments')
-          .select('student_id')
-          .eq('status', 'Pending')
-          .is('block_id', null) // Only students not already in a block
-          .neq('student_id', studentId) // Exclude current student
-
-        if (pendingAssignments && pendingAssignments.length > 0) {
-          const pendingStudentIds = pendingAssignments.map(a => a.student_id)
-
-          // Get student data and preferences
-          const { data: students } = await supabaseAdmin
-            .from('students')
-            .select('student_id, first_name, last_name, email, gender, year_level, major')
-            .in('student_id', pendingStudentIds)
-            .eq('gender', gender) // Same gender only
-
-          if (students && students.length > 0) {
-            const { data: allPreferences } = await supabaseAdmin
-              .from('student_preferences')
-              .select('*')
-              .in('student_id', students.map(s => s.student_id))
-
-            // Calculate compatibility with each student
-            const compatibilityScores: Array<{
-              student: any
-              score: number
-            }> = []
-
-            for (const student of students) {
-              const studentPref = allPreferences?.find(p => p.student_id === student.student_id) || null
-              
-              const candidateStudent = {
-                student_id: student.student_id,
-                first_name: student.first_name,
-                last_name: student.last_name,
-                email: student.email,
-                gender: student.gender,
-                year_level: String(student.year_level || ''),
-                major: student.major,
-                preferences: studentPref
-              }
-
-              const compatibility = calculateCompatibility(currentStudent, candidateStudent)
-              
-              // Only consider students with compatibility score >= 60
-              if (compatibility.score >= 60) {
-                compatibilityScores.push({
-                  student: candidateStudent,
-                  score: compatibility.score
-                })
-              }
+        // OPTION 3: Random matching - find compatible roommates
+        else if (assignmentPreference === 'random') {
+          // Get current student data with preferences
+          const currentStudent = {
+            student_id: studentId,
+            first_name: firstName,
+            last_name: lastName,
+            email: email,
+            gender: gender,
+            year_level: String(yearLevelNumber),
+            major: major || null,
+            preferences: {
+              preferred_room_type: roomType || null,
+              bedtime: bedtime || null,
+              noise_level: noiseLevel ? parseInt(noiseLevel) : null,
+              cleanliness_level: cleanlinessLevel ? parseInt(cleanlinessLevel) : null,
+              guest_policy_preference: guestPolicy ? parseInt(guestPolicy) : null,
             }
+          }
 
-            // Sort by compatibility score (highest first)
-            compatibilityScores.sort((a, b) => b.score - a.score)
+          // Find other pending students with same gender who also want random matching
+          const { data: pendingAssignments } = await supabaseAdmin
+            .from('room_assignments')
+            .select('student_id')
+            .eq('status', 'Pending')
+            .is('block_id', null)
+            .neq('student_id', studentId)
 
-            // Find or create a block with compatible students
-            // Try to find an existing block with space (max 8 members)
-            if (compatibilityScores.length > 0) {
-              // Get existing blocks and their member counts
-              const { data: existingBlocks } = await supabaseAdmin
-                .from('student_blocks')
-                .select('block_id')
+          if (pendingAssignments && pendingAssignments.length > 0) {
+            const pendingStudentIds = pendingAssignments.map(a => a.student_id)
 
-              let foundBlock = false
+            const { data: students } = await supabaseAdmin
+              .from('students')
+              .select('student_id, first_name, last_name, email, gender, year_level, major')
+              .in('student_id', pendingStudentIds)
+              .eq('gender', gender)
 
-              if (existingBlocks && existingBlocks.length > 0) {
-                const blockIds = existingBlocks.map(b => b.block_id)
+            if (students && students.length > 0) {
+              const { data: allPreferences } = await supabaseAdmin
+                .from('student_preferences')
+                .select('*')
+                .in('student_id', students.map(s => s.student_id))
 
-                // Get member counts for each block
-                const { data: blockMembers } = await supabaseAdmin
-                  .from('block_members')
-                  .select('block_id, student_id')
-                  .in('block_id', blockIds)
+              const compatibilityScores: Array<{ student: any; score: number }> = []
 
-                if (blockMembers) {
-                  const blockMemberCounts = new Map<number, number>()
-                  blockMembers.forEach(m => {
-                    blockMemberCounts.set(m.block_id, (blockMemberCounts.get(m.block_id) || 0) + 1)
-                  })
+              for (const student of students) {
+                const studentPref = allPreferences?.find(p => p.student_id === student.student_id) || null
+                const candidateStudent = {
+                  student_id: student.student_id,
+                  first_name: student.first_name,
+                  last_name: student.last_name,
+                  email: student.email,
+                  gender: student.gender,
+                  year_level: String(student.year_level || ''),
+                  major: student.major,
+                  preferences: studentPref
+                }
 
-                  // Find a block with space (max 8 members, need at least 2 more spots for new student + 1 compatible)
-                  for (const [blockIdNum, count] of blockMemberCounts.entries()) {
-                    if (count < 7) { // Room for at least 2 more (current + 1 compatible)
-                      // Check if any compatible students are already in this block
-                      const blockStudentIds = blockMembers
-                        .filter(m => m.block_id === blockIdNum)
-                        .map(m => m.student_id)
-
-                      // Find compatible students not in this block
-                      const availableCompatible = compatibilityScores.filter(
-                        cs => !blockStudentIds.includes(cs.student.student_id)
-                      )
-
-                      if (availableCompatible.length > 0) {
-                        blockId = blockIdNum
-                        matchedStudents = [availableCompatible[0].student.student_id]
-                        foundBlock = true
-                        break
-                      }
-                    }
-                  }
+                const compatibility = calculateCompatibility(currentStudent, candidateStudent)
+                if (compatibility.score >= 60) {
+                  compatibilityScores.push({ student: candidateStudent, score: compatibility.score })
                 }
               }
 
-              // If no existing block found, create a new one with the best match
-              if (!foundBlock && compatibilityScores.length > 0) {
-                // Generate a unique block code
-                const blockCode = `BLK-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`
+              compatibilityScores.sort((a, b) => b.score - a.score)
 
-                // Create new block
+              if (compatibilityScores.length > 0) {
+                // Create a new block with the best match
+                const newBlockCode = `BLK-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`
+
                 const { data: newBlock, error: blockError } = await supabaseAdmin
                   .from('student_blocks')
-                  .insert({
-                    code: blockCode
-                  })
-                  .select('block_id')
+                  .insert({ code: newBlockCode })
+                  .select('block_id, code')
                   .single()
 
                 if (!blockError && newBlock) {
                   blockId = newBlock.block_id
+                  blockCode = newBlock.code
                   matchedStudents = [compatibilityScores[0].student.student_id]
 
-                  // Add compatible student to block
+                  // Add both students to the block
                   await supabaseAdmin
                     .from('block_members')
-                    .insert({
-                      block_id: blockId,
-                      student_id: matchedStudents[0]
-                    })
-                }
-              }
+                    .insert([
+                      { block_id: blockId, student_id: studentId, is_leader: true },
+                      { block_id: blockId, student_id: matchedStudents[0], is_leader: false }
+                    ])
 
-              // Add current student to block if we found/created one
-              if (blockId !== null) {
-                await supabaseAdmin
-                  .from('block_members')
-                  .insert({
-                    block_id: blockId,
-                    student_id: studentId
-                  })
-
-                // Update compatible student's room assignment with block_id
-                if (matchedStudents.length > 0) {
+                  // Update matched student's room assignment with block_id
                   await supabaseAdmin
                     .from('room_assignments')
                     .update({ block_id: blockId })
@@ -378,8 +343,8 @@ export async function POST(request: NextRequest) {
           }
         }
       } catch (error: any) {
-        console.error('Error in auto-matching:', error)
-        // Continue even if matching fails - student can still be assigned individually
+        console.error('Error in room assignment:', error)
+        // Continue even if matching fails
       }
     }
 
@@ -454,14 +419,26 @@ export async function POST(request: NextRequest) {
       // Don't throw - this is a background process
     })
 
+    // Determine response message based on assignment preference
+    let message = 'Application submitted successfully.'
+    if (assignmentPreference === 'single' || roomType === 'Single') {
+      message = 'Application submitted successfully. You\'ll be assigned a single room.'
+    } else if (assignmentPreference === 'private' && blockCode) {
+      message = `Application submitted successfully. Your block code is: ${blockCode}. Share this with friends to have them join your room!`
+    } else if (assignmentPreference === 'random' && matchedStudents.length > 0) {
+      message = `Application submitted successfully. You've been matched with ${matchedStudents.length} compatible roommate(s)!`
+    } else if (assignmentPreference === 'random') {
+      message = 'Application submitted successfully. We\'re looking for compatible roommates for you.'
+    }
+
     return NextResponse.json(
       {
-        message: blockId 
-          ? `Application submitted successfully. You've been matched with ${matchedStudents.length} compatible student(s) and added to a block!`
-          : 'Application submitted successfully. We\'re matching you with compatible roommates now.',
+        message,
         student: studentData,
         blockId: blockId,
-        matchedStudents: matchedStudents.length
+        blockCode: blockCode, // Include block code for private rooms
+        matchedStudents: matchedStudents.length,
+        assignmentPreference: assignmentPreference || 'random'
       },
       { status: 201 }
     )

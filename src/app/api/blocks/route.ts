@@ -49,8 +49,8 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Check if user is in a block
-    const { data: membership, error: membershipError } = await supabase
+    // Check if user is in a block via block_members table
+    let { data: membership, error: membershipError } = await supabase
       .from('block_members')
       .select('block_id, is_leader')
       .eq('student_id', user.id)
@@ -61,6 +61,34 @@ export async function GET(request: NextRequest) {
         { error: `Failed to check block membership: ${membershipError.message}` },
         { status: 500 }
       )
+    }
+
+    // If not in block_members, check if they have a block_id in room_assignments
+    // This handles cases where matching algorithm assigned a block but didn't add to block_members
+    if (!membership) {
+      const { data: assignment, error: assignmentError } = await supabase
+        .from('room_assignments')
+        .select('block_id')
+        .eq('student_id', user.id)
+        .not('block_id', 'is', null)
+        .maybeSingle()
+
+      if (!assignmentError && assignment?.block_id) {
+        // User has a block_id in room_assignments but isn't in block_members
+        // Add them to block_members to sync
+        const { error: insertError } = await supabase
+          .from('block_members')
+          .insert({
+            block_id: assignment.block_id,
+            student_id: user.id,
+            is_leader: false,
+            joined_date: new Date().toISOString().split('T')[0],
+          })
+
+        if (!insertError) {
+          membership = { block_id: assignment.block_id, is_leader: false }
+        }
+      }
     }
 
     if (!membership) {

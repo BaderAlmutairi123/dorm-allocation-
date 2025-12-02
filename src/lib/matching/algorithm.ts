@@ -526,30 +526,13 @@ export async function runMatchingAlgorithm(): Promise<{
       
       // Process Single room students first - no roommate matching needed
       for (const student of singleRoomStudents) {
-        // Find available Single room
-        let singleRooms = rooms.filter(room => {
+        // Find available Single room - ONLY Single rooms, no fallback to other types
+        const singleRooms = rooms.filter(room => {
           const currentOccupancy = occupancy.get(room.id) || (room.current_occupancy || 0)
           const hasSpace = room.capacity > currentOccupancy
           const isSingle = room.room_type?.toLowerCase() === 'single'
           return hasSpace && isSingle
         })
-        
-        // If no Single rooms available, try any room with capacity 1-2
-        if (singleRooms.length === 0) {
-          singleRooms = rooms.filter(room => {
-            const currentOccupancy = occupancy.get(room.id) || (room.current_occupancy || 0)
-            const hasSpace = room.capacity > currentOccupancy
-            return hasSpace && room.capacity <= 2
-          })
-        }
-        
-        // Last resort: any available room
-        if (singleRooms.length === 0) {
-          singleRooms = rooms.filter(room => {
-            const currentOccupancy = occupancy.get(room.id) || (room.current_occupancy || 0)
-            return room.capacity > currentOccupancy
-          })
-        }
         
         if (singleRooms.length > 0) {
           const selectedRoom = singleRooms[0]
@@ -571,7 +554,9 @@ export async function runMatchingAlgorithm(): Promise<{
           assigned.add(student.student_id)
           occupancy.set(selectedRoom.id, currentOccupancy + 1)
         } else {
+          // No Single rooms available - mark as unmatched, don't assign to wrong room type
           unmatched.push(student.student_id)
+          errors.push(`No Single rooms available for student ${student.student_id}`)
         }
       }
       
@@ -617,7 +602,7 @@ export async function runMatchingAlgorithm(): Promise<{
             }
           }
           
-          // Find suitable room
+          // Find suitable room - STRICTLY match room type preference
           const roomTypePreference = student.preferences?.preferred_room_type
           
           let suitableRooms = rooms.filter(room => {
@@ -625,23 +610,27 @@ export async function runMatchingAlgorithm(): Promise<{
             const hasSpace = room.capacity > currentOccupancy
             if (!hasSpace) return false
             
+            // Strictly match room type
             if (roomTypePreference) {
               const roomTypeLower = room.room_type?.toLowerCase()
               const prefTypeLower = roomTypePreference.toLowerCase()
               return roomTypeLower === prefTypeLower
             }
-            return true
+            // No preference = only match Double or Suite (not Single)
+            return room.room_type?.toLowerCase() !== 'single'
           })
           
-          // Fallback to any room with space
+          // NO FALLBACK - only assign to correct room type
+          // If no matching rooms available, student will be unmatched
+          
+          // If no suitable rooms of the correct type, mark as unmatched
           if (suitableRooms.length === 0) {
-            suitableRooms = rooms.filter(room => {
-              const currentOccupancy = occupancy.get(room.id) || (room.current_occupancy || 0)
-              return room.capacity > currentOccupancy
-            })
+            unmatched.push(student.student_id)
+            errors.push(`No ${roomTypePreference || 'shared'} rooms available for student ${student.student_id}`)
+            continue
           }
           
-          // Sort by capacity
+          // Sort by capacity - prefer rooms with space for roommates
           suitableRooms.sort((a, b) => {
             const aOccupancy = occupancy.get(a.id) || (a.current_occupancy || 0)
             const bOccupancy = occupancy.get(b.id) || (b.current_occupancy || 0)
@@ -668,11 +657,41 @@ export async function runMatchingAlgorithm(): Promise<{
             const currentOccupancy = occupancy.get(selectedRoom.id) || (selectedRoom.current_occupancy || 0)
             const remaining = selectedRoom.capacity - currentOccupancy
             
+            // If we have a good match and room has space, create a block and assign them together
+            let newBlockId: string | null = null
+            
+            if (bestMatch && remaining >= 2 && bestScore >= 60) {
+              // Create a new block for these matched students
+              try {
+                const blockCode = `BLK-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`
+                
+                const { data: newBlock, error: blockError } = await supabaseAdmin
+                  .from('student_blocks')
+                  .insert({ code: blockCode })
+                  .select('block_id')
+                  .single()
+                
+                if (!blockError && newBlock) {
+                  newBlockId = String(newBlock.block_id)
+                  
+                  // Add both students to the block
+                  await supabaseAdmin
+                    .from('block_members')
+                    .insert([
+                      { block_id: newBlock.block_id, student_id: student.student_id },
+                      { block_id: newBlock.block_id, student_id: bestMatch.student_id }
+                    ])
+                }
+              } catch (blockErr: any) {
+                console.warn('Failed to create block for matched students:', blockErr.message)
+              }
+            }
+            
             // Assign student
             const matchData = {
               student_id: student.student_id,
               room_id: selectedRoom.id,
-              block_id: null,
+              block_id: newBlockId,
               compatibility_score: bestMatch ? bestScore : undefined,
               matched_with: bestMatch ? [bestMatch.student_id] : undefined,
             }
@@ -685,7 +704,7 @@ export async function runMatchingAlgorithm(): Promise<{
               matches.push({
                 student_id: bestMatch.student_id,
                 room_id: selectedRoom.id,
-                block_id: null,
+                block_id: newBlockId,
                 compatibility_score: bestScore,
                 matched_with: [student.student_id],
               })

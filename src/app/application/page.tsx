@@ -146,11 +146,17 @@ export default function ApplicationPage() {
     major: "",
     year: "",
     roomType: "",
+    assignmentPreference: "", // "random" = match with others, "private" = empty room + block to invite friends
     bedtime: "",
     noiseLevel: "",
     cleanlinessLevel: "",
     guestPolicy: "",
   });
+
+  // Check if single room is selected (no roommate preferences needed)
+  const isSingleRoom = formData.roomType === "Single";
+  // Check if room type requires roommate options
+  const needsRoommateOptions = formData.roomType === "Double" || formData.roomType === "Suite";
 
   // Filter majors based on search
   const filteredMajors = HOFSTRA_MAJORS.filter(major =>
@@ -216,6 +222,14 @@ export default function ApplicationPage() {
                 4: 'Senior',
               };
 
+              // Determine assignment preference based on room type and preferences
+              let inferredAssignmentPref = "random";
+              if (preferencesData.preferred_room_type === "Single") {
+                inferredAssignmentPref = "single";
+              } else if (preferencesData.bedtime || preferencesData.noise_level || preferencesData.cleanliness_level || preferencesData.guest_policy_preference) {
+                inferredAssignmentPref = "random";
+              }
+
               setFormData({
                 studentId: user.id,
                 email: user.email || "",
@@ -226,6 +240,7 @@ export default function ApplicationPage() {
                 major: studentData.major || "",
                 year: yearLevelText[studentData.year_level] || "",
                 roomType: preferencesData.preferred_room_type || "",
+                assignmentPreference: inferredAssignmentPref,
                 bedtime: preferencesData.bedtime || "",
                 noiseLevel: preferencesData.noise_level?.toString() || "",
                 cleanlinessLevel: preferencesData.cleanliness_level?.toString() || "",
@@ -325,6 +340,7 @@ export default function ApplicationPage() {
         ...prev,
         // Keep phone, gender, major, year - user can update these if they want
         roomType: "",
+        assignmentPreference: "",
         bedtime: "",
         noiseLevel: "",
         cleanlinessLevel: "",
@@ -380,7 +396,7 @@ export default function ApplicationPage() {
   };
 
   const handleInputChange = (field: string, value: string) => {
-    setFormData({ ...formData, [field]: value });
+    setFormData(prev => ({ ...prev, [field]: value }));
   };
 
   const formatPhoneNumber = (value: string) => {
@@ -618,15 +634,35 @@ export default function ApplicationPage() {
 
                 {/* Housing Preferences */}
                 <div className="space-y-4">
-                  <h3 className="text-lg font-semibold">Roommate Matching Preferences</h3>
+                  <h3 className="text-lg font-semibold">Room Preferences</h3>
                   <p className="text-sm text-muted-foreground">
-                    Help us find you compatible roommates by sharing your living preferences.
+                    Choose your preferred room type and how you&apos;d like to be matched.
                   </p>
 
                   <div className="space-y-2">
                     <Label htmlFor="roomType">Preferred Room Type</Label>
                     <Select
-                      onValueChange={(value) => handleInputChange("roomType", value)}
+                      onValueChange={(value) => {
+                        if (value === "Single") {
+                          // Auto-set for single rooms - update all at once
+                          setFormData(prev => ({
+                            ...prev,
+                            roomType: value,
+                            assignmentPreference: "single",
+                            bedtime: "",
+                            noiseLevel: "",
+                            cleanlinessLevel: "",
+                            guestPolicy: "",
+                          }));
+                        } else {
+                          // For Double/Suite - clear assignment preference so user can choose
+                          setFormData(prev => ({
+                            ...prev,
+                            roomType: value,
+                            assignmentPreference: "",
+                          }));
+                        }
+                      }}
                       value={formData.roomType}
                       disabled={isSubmitted}
                     >
@@ -641,88 +677,161 @@ export default function ApplicationPage() {
                     </Select>
                   </div>
 
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="bedtime">Bedtime Preference</Label>
-                      <Select
-                        onValueChange={(value) => handleInputChange("bedtime", value)}
-                        value={formData.bedtime}
-                        disabled={isSubmitted}
-                      >
-                        <SelectTrigger id="bedtime" className={isSubmitted ? "bg-gray-100 cursor-not-allowed" : ""}>
-                          <SelectValue placeholder="Select preference" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Early Bird">Early Bird</SelectItem>
-                          <SelectItem value="Night Owl">Night Owl</SelectItem>
-                        </SelectContent>
-                      </Select>
+                  {/* Assignment Preference - Only show for Double/Suite */}
+                  {needsRoommateOptions && (
+                    <div className="space-y-3 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                      <Label className="text-base font-semibold">How would you like to be assigned?</Label>
+                      <div className="space-y-3">
+                        <label className={`flex items-start gap-3 p-3 rounded-lg border-2 cursor-pointer transition ${formData.assignmentPreference === 'random' ? 'border-blue-500 bg-blue-100' : 'border-gray-200 bg-white hover:border-gray-300'} ${isSubmitted ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                          <input
+                            type="radio"
+                            name="assignmentPreference"
+                            value="random"
+                            checked={formData.assignmentPreference === 'random'}
+                            onChange={(e) => handleInputChange("assignmentPreference", e.target.value)}
+                            disabled={isSubmitted}
+                            className="mt-1"
+                          />
+                          <div>
+                            <p className="font-medium">Match me with compatible roommates</p>
+                            <p className="text-sm text-muted-foreground">
+                              We&apos;ll find you roommates based on your preferences below
+                            </p>
+                          </div>
+                        </label>
+                        <label className={`flex items-start gap-3 p-3 rounded-lg border-2 cursor-pointer transition ${formData.assignmentPreference === 'private' ? 'border-blue-500 bg-blue-100' : 'border-gray-200 bg-white hover:border-gray-300'} ${isSubmitted ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                          <input
+                            type="radio"
+                            name="assignmentPreference"
+                            value="private"
+                            checked={formData.assignmentPreference === 'private'}
+                            onChange={(e) => handleInputChange("assignmentPreference", e.target.value)}
+                            disabled={isSubmitted}
+                            className="mt-1"
+                          />
+                          <div>
+                            <p className="font-medium">Give me an empty room to invite friends</p>
+                            <p className="text-sm text-muted-foreground">
+                              You&apos;ll get a private room and block code to share with friends
+                            </p>
+                          </div>
+                        </label>
+                      </div>
                     </div>
+                  )}
 
-                    <div className="space-y-2">
-                      <Label htmlFor="noiseLevel">Noise Level Tolerance (1-5)</Label>
-                      <Select
-                        onValueChange={(value) => handleInputChange("noiseLevel", value)}
-                        value={formData.noiseLevel}
-                        disabled={isSubmitted}
-                      >
-                        <SelectTrigger id="noiseLevel" className={isSubmitted ? "bg-gray-100 cursor-not-allowed" : ""}>
-                          <SelectValue placeholder="1 = Quiet, 5 = Loud" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="1">1 - Very Quiet</SelectItem>
-                          <SelectItem value="2">2 - Quiet</SelectItem>
-                          <SelectItem value="3">3 - Moderate</SelectItem>
-                          <SelectItem value="4">4 - Loud</SelectItem>
-                          <SelectItem value="5">5 - Very Loud</SelectItem>
-                        </SelectContent>
-                      </Select>
+                  {/* Single Room Message */}
+                  {isSingleRoom && (
+                    <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                      <p className="text-green-700 font-medium">✓ Single Room Selected</p>
+                      <p className="text-sm text-green-600">
+                        You&apos;ll be assigned a private single room. No roommate matching needed!
+                      </p>
                     </div>
-                  </div>
-
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="cleanlinessLevel">Cleanliness Level (1-5)</Label>
-                      <Select
-                        onValueChange={(value) => handleInputChange("cleanlinessLevel", value)}
-                        value={formData.cleanlinessLevel}
-                        disabled={isSubmitted}
-                      >
-                        <SelectTrigger id="cleanlinessLevel" className={isSubmitted ? "bg-gray-100 cursor-not-allowed" : ""}>
-                          <SelectValue placeholder="1 = Messy, 5 = Very Clean" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="1">1 - Very Messy</SelectItem>
-                          <SelectItem value="2">2 - Somewhat Messy</SelectItem>
-                          <SelectItem value="3">3 - Moderate</SelectItem>
-                          <SelectItem value="4">4 - Clean</SelectItem>
-                          <SelectItem value="5">5 - Very Clean</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="guestPolicy">Guest Policy (0-4 days/week)</Label>
-                      <Select
-                        onValueChange={(value) => handleInputChange("guestPolicy", value)}
-                        value={formData.guestPolicy}
-                        disabled={isSubmitted}
-                      >
-                        <SelectTrigger id="guestPolicy" className={isSubmitted ? "bg-gray-100 cursor-not-allowed" : ""}>
-                          <SelectValue placeholder="Select preference" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="0">0 - No Guests</SelectItem>
-                          <SelectItem value="1">1 - Rarely</SelectItem>
-                          <SelectItem value="2">2 - Sometimes</SelectItem>
-                          <SelectItem value="3">3 - Often</SelectItem>
-                          <SelectItem value="4">4 - Frequently</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-
+                  )}
                 </div>
+
+                {/* Roommate Matching Preferences - Only show for Double/Suite with random matching */}
+                {needsRoommateOptions && formData.assignmentPreference === 'random' && (
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-semibold">Roommate Matching Preferences</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Help us find you compatible roommates by sharing your living preferences.
+                    </p>
+
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label htmlFor="bedtime">Bedtime Preference</Label>
+                        <Select
+                          onValueChange={(value) => handleInputChange("bedtime", value)}
+                          value={formData.bedtime}
+                          disabled={isSubmitted}
+                        >
+                          <SelectTrigger id="bedtime" className={isSubmitted ? "bg-gray-100 cursor-not-allowed" : ""}>
+                            <SelectValue placeholder="Select preference" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Early Bird">Early Bird</SelectItem>
+                            <SelectItem value="Night Owl">Night Owl</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="noiseLevel">Noise Level Tolerance (1-5)</Label>
+                        <Select
+                          onValueChange={(value) => handleInputChange("noiseLevel", value)}
+                          value={formData.noiseLevel}
+                          disabled={isSubmitted}
+                        >
+                          <SelectTrigger id="noiseLevel" className={isSubmitted ? "bg-gray-100 cursor-not-allowed" : ""}>
+                            <SelectValue placeholder="1 = Quiet, 5 = Loud" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="1">1 - Very Quiet</SelectItem>
+                            <SelectItem value="2">2 - Quiet</SelectItem>
+                            <SelectItem value="3">3 - Moderate</SelectItem>
+                            <SelectItem value="4">4 - Loud</SelectItem>
+                            <SelectItem value="5">5 - Very Loud</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label htmlFor="cleanlinessLevel">Cleanliness Level (1-5)</Label>
+                        <Select
+                          onValueChange={(value) => handleInputChange("cleanlinessLevel", value)}
+                          value={formData.cleanlinessLevel}
+                          disabled={isSubmitted}
+                        >
+                          <SelectTrigger id="cleanlinessLevel" className={isSubmitted ? "bg-gray-100 cursor-not-allowed" : ""}>
+                            <SelectValue placeholder="1 = Messy, 5 = Very Clean" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="1">1 - Very Messy</SelectItem>
+                            <SelectItem value="2">2 - Somewhat Messy</SelectItem>
+                            <SelectItem value="3">3 - Moderate</SelectItem>
+                            <SelectItem value="4">4 - Clean</SelectItem>
+                            <SelectItem value="5">5 - Very Clean</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="guestPolicy">Guest Policy (0-4 days/week)</Label>
+                        <Select
+                          onValueChange={(value) => handleInputChange("guestPolicy", value)}
+                          value={formData.guestPolicy}
+                          disabled={isSubmitted}
+                        >
+                          <SelectTrigger id="guestPolicy" className={isSubmitted ? "bg-gray-100 cursor-not-allowed" : ""}>
+                            <SelectValue placeholder="Select preference" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="0">0 - No Guests</SelectItem>
+                            <SelectItem value="1">1 - Rarely</SelectItem>
+                            <SelectItem value="2">2 - Sometimes</SelectItem>
+                            <SelectItem value="3">3 - Often</SelectItem>
+                            <SelectItem value="4">4 - Frequently</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Private Room Info - Show when private option selected */}
+                {needsRoommateOptions && formData.assignmentPreference === 'private' && (
+                  <div className="p-4 bg-purple-50 border border-purple-200 rounded-lg">
+                    <p className="text-purple-700 font-medium">📨 Private Room + Block</p>
+                    <p className="text-sm text-purple-600">
+                      After submission, you&apos;ll receive a block code that you can share with friends. 
+                      They can use this code to join your room group in the Blocks &amp; Roommates page.
+                    </p>
+                  </div>
+                )}
 
                 {/* Error and Success Messages */}
                 {error && (
