@@ -393,7 +393,7 @@ export async function POST(request: NextRequest) {
     // Check if room assignment already exists (student_id is unique)
     const { data: existingAssignment, error: checkError } = await supabase
       .from('room_assignments')
-      .select('assignment_id, student_id')
+      .select('assignment_id, student_id, room_id')
       .eq('student_id', studentId)
       .maybeSingle() // Use maybeSingle() instead of single() to avoid errors when no record exists
 
@@ -468,6 +468,108 @@ export async function POST(request: NextRequest) {
 
   } catch (error: any) {
     console.error('Error processing application:', error)
+    return NextResponse.json(
+      { error: 'Internal server error', details: error.message },
+      { status: 500 }
+    )
+  }
+}
+
+// DELETE - Reset/restart application
+export async function DELETE(request: NextRequest) {
+  try {
+    // Get the authorization token from the request
+    const authHeader = request.headers.get('authorization')
+    const token = authHeader?.replace('Bearer ', '')
+
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+    if (!supabaseUrl || !supabaseAnonKey) {
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      )
+    }
+
+    // Create client with user's session token for RLS to work
+    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+      global: {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      },
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    })
+
+    // Verify authentication
+    if (!token) {
+      return NextResponse.json(
+        { error: 'Unauthorized - Please sign in' },
+        { status: 401 }
+      )
+    }
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
+    if (authError || !user) {
+      return NextResponse.json(
+        { error: 'Unauthorized - Please sign in' },
+        { status: 401 }
+      )
+    }
+
+    const studentId = user.id
+
+    // Use admin client to bypass RLS for deletions
+    if (!supabaseAdmin) {
+      return NextResponse.json(
+        { error: 'Server configuration error - admin client not available' },
+        { status: 500 }
+      )
+    }
+
+    // Delete from block_members first (foreign key constraint)
+    const { error: blockMemberError } = await supabaseAdmin
+      .from('block_members')
+      .delete()
+      .eq('student_id', studentId)
+
+    if (blockMemberError) {
+      console.error('Error deleting block membership:', blockMemberError)
+    }
+
+    // Delete room assignment
+    const { error: assignmentError } = await supabaseAdmin
+      .from('room_assignments')
+      .delete()
+      .eq('student_id', studentId)
+
+    if (assignmentError) {
+      console.error('Error deleting room assignment:', assignmentError)
+    }
+
+    // Delete student preferences
+    const { error: preferencesError } = await supabaseAdmin
+      .from('student_preferences')
+      .delete()
+      .eq('student_id', studentId)
+
+    if (preferencesError) {
+      console.error('Error deleting preferences:', preferencesError)
+    }
+
+    // Note: We don't reset student record fields (phone, gender, etc.)
+    // because phone has a unique constraint and can't be set to null if other students have null
+    // The student will update these fields when they resubmit their application
+
+    return NextResponse.json(
+      { message: 'Application has been reset successfully. You can now submit a new application.' },
+      { status: 200 }
+    )
+
+  } catch (error: any) {
+    console.error('Error resetting application:', error)
     return NextResponse.json(
       { error: 'Internal server error', details: error.message },
       { status: 500 }

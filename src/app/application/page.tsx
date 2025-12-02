@@ -291,6 +291,53 @@ export default function ApplicationPage() {
     };
   }, [showMajorDropdown]);
 
+  const handleRestartApplication = async () => {
+    if (!confirm('Are you sure you want to restart your application? This will delete your current preferences and room assignment.')) {
+      return;
+    }
+
+    setIsLoading(true);
+    setError("");
+
+    try {
+      const session = await authClient.getSession();
+      const token = session?.access_token;
+
+      const response = await fetch('/api/application', {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token && { 'Authorization': `Bearer ${token}` }),
+        },
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to restart application');
+      }
+
+      // Reset form state - only clear preferences, keep basic student info
+      setIsSubmitted(false);
+      setSuccess(false);
+      setSuccessMessage("");
+      setFormData(prev => ({
+        ...prev,
+        // Keep phone, gender, major, year - user can update these if they want
+        roomType: "",
+        bedtime: "",
+        noiseLevel: "",
+        cleanlinessLevel: "",
+        guestPolicy: "",
+      }));
+
+    } catch (err: any) {
+      setError(err.message || 'An error occurred. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
@@ -701,7 +748,7 @@ export default function ApplicationPage() {
                 )}
 
                 {/* Submit Button */}
-                <div>
+                <div className="space-y-3">
                   <Button
                     type="submit"
                     className="w-full bg-blue-800 hover:bg-blue-900"
@@ -709,6 +756,18 @@ export default function ApplicationPage() {
                   >
                     {isSubmitted ? 'Application Already Submitted' : (isLoading ? 'Submitting...' : 'Submit Application')}
                   </Button>
+                  
+                  {isSubmitted && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700"
+                      onClick={handleRestartApplication}
+                      disabled={isLoading}
+                    >
+                      {isLoading ? 'Restarting...' : 'Restart Application'}
+                    </Button>
+                  )}
                 </div>
               </form>
             </CardContent>
