@@ -106,14 +106,14 @@ export async function GET(
       }
     }
 
-    // Get roommates if room is assigned
+    // Get roommates if room is assigned (include both Confirmed and Pending)
     let roommates: any[] = []
-    if (assignment.room_id && assignment.status === 'Confirmed') {
+    if (assignment.room_id) {
       const { data: roommateAssignments } = await supabase
         .from('room_assignments')
-        .select('student_id, students(first_name, last_name, email, major)')
+        .select('student_id, status, students(first_name, last_name, email, major)')
         .eq('room_id', assignment.room_id)
-        .eq('status', 'Confirmed')
+        .in('status', ['Confirmed', 'Pending'])
         .neq('student_id', student_id)
 
       if (roommateAssignments) {
@@ -121,6 +121,20 @@ export async function GET(
           student_id: ra.student_id,
           ...ra.students,
         }))
+      }
+    }
+
+    // Calculate actual room occupancy by counting all assignments to this room
+    let actualOccupancy = 1 // At least the current user
+    if (assignment.room_id) {
+      const { data: allRoomAssignments } = await supabase
+        .from('room_assignments')
+        .select('student_id')
+        .eq('room_id', assignment.room_id)
+        .in('status', ['Confirmed', 'Pending'])
+
+      if (allRoomAssignments) {
+        actualOccupancy = allRoomAssignments.length
       }
     }
 
@@ -138,7 +152,8 @@ export async function GET(
           floor_number: roomData.floor_number,
           room_type: roomData.room_type,
           max_capacity: roomData.max_capacity,
-          current_occupancy: roomData.current_occupancy,
+          // Use the calculated actual occupancy instead of stored value
+          current_occupancy: actualOccupancy,
           wants_suite_bathroom: roomData.wants_suite_bathroom,
           is_accessible: roomData.is_accessible,
           dorm: dormData ? {

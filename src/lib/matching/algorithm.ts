@@ -619,7 +619,55 @@ export async function runMatchingAlgorithm(): Promise<{
       
       // Now process shared room students with compatibility matching
       if (sharedRoomStudents.length > 0) {
-        // Calculate compatibility matrix for shared room students
+        // Get existing students in partially filled rooms for compatibility matching
+        const { data: existingAssignments } = await supabaseAdmin
+          .from('room_assignments')
+          .select('student_id, room_id, block_id')
+          .eq('status', 'Confirmed')
+          .not('room_id', 'is', null)
+
+        // Get student data for existing assigned students
+        const existingStudentIds = existingAssignments?.map(a => a.student_id).filter(Boolean) || []
+        let existingStudentsData: StudentWithPreferences[] = []
+        
+        if (existingStudentIds.length > 0) {
+          const { data: existingStudents } = await supabaseAdmin
+            .from('students')
+            .select('*')
+            .in('student_id', existingStudentIds)
+          
+          const { data: existingPrefs } = await supabaseAdmin
+            .from('student_preferences')
+            .select('*')
+            .in('student_id', existingStudentIds)
+          
+          existingStudentsData = (existingStudents || []).map(student => ({
+            student_id: student.student_id,
+            first_name: student.first_name,
+            last_name: student.last_name,
+            email: student.email,
+            gender: student.gender,
+            year_level: student.year_level,
+            major: student.major,
+            preferences: existingPrefs?.find(p => p.student_id === student.student_id) || null,
+          }))
+        }
+
+        // Create a map of room_id -> existing students in that room
+        const roomToStudents = new Map<string, { student: StudentWithPreferences, block_id: string | null }[]>()
+        existingAssignments?.forEach(assignment => {
+          if (assignment.room_id) {
+            const roomId = String(assignment.room_id)
+            const studentData = existingStudentsData.find(s => s.student_id === assignment.student_id)
+            if (studentData) {
+              const existing = roomToStudents.get(roomId) || []
+              existing.push({ student: studentData, block_id: assignment.block_id })
+              roomToStudents.set(roomId, existing)
+            }
+          }
+        })
+        
+        // Calculate compatibility matrix for pending shared room students
         const compatibilityMatrix = new Map<string, Map<string, CompatibilityScore>>()
         
         for (let i = 0; i < sharedRoomStudents.length; i++) {
@@ -639,11 +687,114 @@ export async function runMatchingAlgorithm(): Promise<{
           return bHasPrefs - aHasPrefs
         })
         
-        // Try to match students in pairs/groups
+        // Try to match students
         for (const student of sortedStudents) {
           if (assigned.has(student.student_id)) continue
           
-          // Find best match
+          const roomTypePreference = student.preferences?.preferred_room_type
+          
+          console.log(`\nProcessing shared room student: ${student.student_id}`)
+          console.log(`Student preference: ${roomTypePreference}`)
+          
+          // STEP 1: Try to find a partially filled room with compatible existing roommate
+          let bestPartialRoom: Room | null = null
+          let bestPartialScore = 0
+          let bestPartialBlockId: string | null = null
+          
+          // Find partially filled rooms that match room type preference
+          const partiallyFilledRooms = rooms.filter(room => {
+            const occupancyFromMap = occupancy.get(room.id)
+            const roomOccupancy = room.current_occupancy || 0
+            const currentOccupancy = occupancyFromMap !== undefined ? occupancyFromMap : roomOccupancy
+            
+            // Room must have space (not full) but also have at least 1 person
+            const hasSpace = currentOccupancy > 0 && currentOccupancy < room.capacity
+            if (!hasSpace) return false
+            
+            // Match room type preference
+            if (roomTypePreference) {
+              const roomTypeLower = room.room_type?.toLowerCase()
+              const prefTypeLower = roomTypePreference.toLowerCase()
+              return roomTypeLower === prefTypeLower
+            }
+            // No preference = only match Double or Suite (not Single)
+            return room.room_type?.toLowerCase() !== 'single'
+          })
+          
+          console.log(`Found ${partiallyFilledRooms.length} partially filled ${roomTypePreference || 'shared'} rooms`)
+          
+          // Check compatibility with existing students in partially filled rooms
+          for (const room of partiallyFilledRooms) {
+            const existingInRoom = roomToStudents.get(room.id) || []
+            
+            // Check gender compatibility - all students in room must be same gender
+            const sameGender = existingInRoom.every(e => e.student.gender === student.gender)
+            if (!sameGender) {
+              console.log(`  Room ${room.room_number}: gender mismatch, skipping`)
+              continue
+            }
+            
+            // Calculate average compatibility with existing roommates
+            let totalScore = 0
+            for (const existing of existingInRoom) {
+              const score = calculateCompatibility(student, existing.student)
+              totalScore += score.score
+            }
+            const avgScore = existingInRoom.length > 0 ? totalScore / existingInRoom.length : 0
+            
+            console.log(`  Room ${room.room_number}: avg compatibility score = ${avgScore.toFixed(1)}`)
+            
+            // Only consider if compatibility is above threshold (60%)
+            if (avgScore >= 60 && avgScore > bestPartialScore) {
+              bestPartialScore = avgScore
+              bestPartialRoom = room
+              // Use the existing block_id from roommates
+              bestPartialBlockId = existingInRoom[0]?.block_id || null
+            }
+          }
+          
+          // If we found a good partially filled room, assign there
+          if (bestPartialRoom && bestPartialScore >= 60) {
+            console.log(`Assigning to partially filled room ${bestPartialRoom.room_number} with score ${bestPartialScore.toFixed(1)}`)
+            
+            const currentOccupancy = occupancy.get(bestPartialRoom.id) || (bestPartialRoom.current_occupancy || 0)
+            
+            // Add student to the existing block if there is one
+            if (bestPartialBlockId) {
+              try {
+                await supabaseAdmin
+                  .from('block_members')
+                  .insert({
+                    block_id: parseInt(bestPartialBlockId),
+                    student_id: student.student_id,
+                    is_leader: false,
+                    joined_date: new Date().toISOString().split('T')[0],
+                  })
+                
+                // Update block capacity
+                await supabaseAdmin
+                  .from('student_blocks')
+                  .update({ current_capacity: currentOccupancy + 1 })
+                  .eq('block_id', parseInt(bestPartialBlockId))
+                
+                console.log(`Added student ${student.student_id} to existing block ${bestPartialBlockId}`)
+              } catch (blockErr: any) {
+                console.warn('Failed to add student to existing block:', blockErr.message)
+              }
+            }
+            
+            matches.push({
+              student_id: student.student_id,
+              room_id: bestPartialRoom.id,
+              block_id: bestPartialBlockId,
+              compatibility_score: bestPartialScore,
+            })
+            assigned.add(student.student_id)
+            occupancy.set(bestPartialRoom.id, currentOccupancy + 1)
+            continue
+          }
+          
+          // STEP 2: Find best match among pending students
           let bestMatch: StudentWithPreferences | null = null
           let bestScore = 0
           
@@ -659,18 +810,11 @@ export async function runMatchingAlgorithm(): Promise<{
             }
           }
           
-          // Find suitable room - STRICTLY match room type preference
-          const roomTypePreference = student.preferences?.preferred_room_type
-          
-          console.log(`\nProcessing shared room student: ${student.student_id}`)
-          console.log(`Student preference: ${roomTypePreference}`)
-          
+          // STEP 3: Find empty room that matches room type preference
           let suitableRooms = rooms.filter(room => {
-            // Prioritize occupancy map (from room_assignments) as it's the source of truth
             const occupancyFromMap = occupancy.get(room.id)
             const roomOccupancy = room.current_occupancy || 0
             const currentOccupancy = occupancyFromMap !== undefined ? occupancyFromMap : roomOccupancy
-            // Only allow rooms with 0 current occupancy (completely empty rooms)
             const isEmpty = currentOccupancy === 0
             if (!isEmpty) return false
             
@@ -679,17 +823,14 @@ export async function runMatchingAlgorithm(): Promise<{
               const roomTypeLower = room.room_type?.toLowerCase()
               const prefTypeLower = roomTypePreference.toLowerCase()
               const matches = roomTypeLower === prefTypeLower
-              console.log(`  Room ${room.room_number} (id=${room.id}): type="${room.room_type}" (${roomTypeLower}) vs preference "${prefTypeLower}", capacity=${room.capacity}, occupancy=${currentOccupancy} (map=${occupancyFromMap}, room=${roomOccupancy}), isEmpty=${isEmpty} -> match=${matches}`)
+              console.log(`  Room ${room.room_number} (id=${room.id}): type="${room.room_type}" (${roomTypeLower}) vs preference "${prefTypeLower}", capacity=${room.capacity}, occupancy=${currentOccupancy}, isEmpty=${isEmpty} -> match=${matches}`)
               return matches
             }
             // No preference = only match Double or Suite (not Single)
             return room.room_type?.toLowerCase() !== 'single'
           })
           
-          console.log(`Found ${suitableRooms.length} suitable ${roomTypePreference || 'shared'} rooms`)
-          
-          // NO FALLBACK - only assign to correct room type
-          // If no matching rooms available, student will be unmatched
+          console.log(`Found ${suitableRooms.length} empty ${roomTypePreference || 'shared'} rooms`)
           
           // If no suitable rooms of the correct type, mark as unmatched
           if (suitableRooms.length === 0) {
