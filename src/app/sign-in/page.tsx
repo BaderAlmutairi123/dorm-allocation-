@@ -49,7 +49,7 @@ export default function SignInPage() {
         <div>
         <div className="flex justify-center mb-6">
             <Image
-              src="/Hoflogo.png"
+              src="/hofstra.png"
               alt="Hofstra Logo"
               width={1920}
               height={1080}

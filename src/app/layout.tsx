@@ -37,11 +37,12 @@ export default function RootLayout({
               </div>
               <div className="flex justify-center items-center gap-3">
                 <Image
-                  src="/Hoflogo.png"
+                  src="/hoflogo.svg"
                   alt="Hofstra Logo"
                   width={1920}
                   height={1080}
                   className="h-12 w-auto"
+                  priority
                 />
                 <span className="text-xl font-semibold">HofstraHousing</span>
               </div>
