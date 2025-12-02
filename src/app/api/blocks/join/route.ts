@@ -3,6 +3,14 @@ import { createClient } from '@supabase/supabase-js'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+// Admin client for bypassing RLS when needed
+const supabaseAdmin = supabaseServiceKey 
+  ? createClient(supabaseUrl, supabaseServiceKey, {
+      auth: { autoRefreshToken: false, persistSession: false }
+    })
+  : null
 
 /**
  * POST /api/blocks/join
@@ -33,6 +41,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Use admin client if available for bypassing RLS
+    const dbClient = supabaseAdmin || supabase
+
     const body = await request.json()
     const { code } = body
 
@@ -44,7 +55,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if user is already in a block
-    const { data: existingMembership } = await supabase
+    const { data: existingMembership } = await dbClient
       .from('block_members')
       .select('block_id')
       .eq('student_id', user.id)
@@ -58,7 +69,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Find block by code
-    const { data: block, error: blockError } = await supabase
+    const { data: block, error: blockError } = await dbClient
       .from('student_blocks')
       .select('*')
       .eq('code', code.toUpperCase())
@@ -80,7 +91,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Add user to block
-    const { error: memberError } = await supabase
+    const { error: memberError } = await dbClient
       .from('block_members')
       .insert({
         block_id: block.block_id,
@@ -97,7 +108,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Update block capacity
-    await supabase
+    await dbClient
       .from('student_blocks')
       .update({ current_capacity: block.current_capacity + 1 })
       .eq('block_id', block.block_id)

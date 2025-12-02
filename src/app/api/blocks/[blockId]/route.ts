@@ -3,6 +3,14 @@ import { createClient } from '@supabase/supabase-js'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+// Admin client for bypassing RLS when needed
+const supabaseAdmin = supabaseServiceKey 
+  ? createClient(supabaseUrl, supabaseServiceKey, {
+      auth: { autoRefreshToken: false, persistSession: false }
+    })
+  : null
 
 /**
  * DELETE /api/blocks/[blockId]
@@ -38,6 +46,9 @@ export async function DELETE(
       )
     }
 
+    // Use admin client if available for bypassing RLS
+    const dbClient = supabaseAdmin || supabase
+
     const blockId = parseInt(blockIdStr)
 
     if (isNaN(blockId)) {
@@ -48,7 +59,7 @@ export async function DELETE(
     }
 
     // Check if user is in this block
-    const { data: membership, error: membershipError } = await supabase
+    const { data: membership, error: membershipError } = await dbClient
       .from('block_members')
       .select('is_leader')
       .eq('block_id', blockId)
@@ -64,7 +75,7 @@ export async function DELETE(
 
     // If user is the leader, check if there are other members
     if (membership.is_leader) {
-      const { data: otherMembers, error: membersError } = await supabase
+      const { data: otherMembers, error: membersError } = await dbClient
         .from('block_members')
         .select('student_id')
         .eq('block_id', blockId)
@@ -80,19 +91,19 @@ export async function DELETE(
       // If there are other members, transfer leadership to the first member
       if (otherMembers && otherMembers.length > 0) {
         const newLeaderId = otherMembers[0].student_id
-        await supabase
+        await dbClient
           .from('block_members')
           .update({ is_leader: true })
           .eq('block_id', blockId)
           .eq('student_id', newLeaderId)
 
-        await supabase
+        await dbClient
           .from('student_blocks')
           .update({ block_leader_id: newLeaderId })
           .eq('block_id', blockId)
       } else {
         // No other members, delete the block
-        await supabase
+        await dbClient
           .from('student_blocks')
           .delete()
           .eq('block_id', blockId)
@@ -100,7 +111,7 @@ export async function DELETE(
     }
 
     // Remove user from block
-    const { error: deleteError } = await supabase
+    const { error: deleteError } = await dbClient
       .from('block_members')
       .delete()
       .eq('block_id', blockId)
@@ -114,14 +125,14 @@ export async function DELETE(
     }
 
     // Update block capacity
-    const { data: block } = await supabase
+    const { data: block } = await dbClient
       .from('student_blocks')
       .select('current_capacity')
       .eq('block_id', blockId)
       .single()
 
     if (block) {
-      await supabase
+      await dbClient
         .from('student_blocks')
         .update({ current_capacity: Math.max(0, block.current_capacity - 1) })
         .eq('block_id', blockId)

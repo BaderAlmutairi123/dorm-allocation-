@@ -2,12 +2,11 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Users, Copy, Check, UserPlus, Home, Search, Bell } from "lucide-react";
+import { Users, Copy, Check, UserPlus, Home, Bell } from "lucide-react";
 import { authClient } from "@/lib/supabase/auth";
 
 interface BlockMember {
@@ -25,13 +24,6 @@ interface Block {
   maxMembers: number;
 }
 
-interface PotentialRoommate {
-  id: string;
-  name: string;
-  major: string;
-  year: string;
-  gender?: string;
-}
 
 interface NotificationItem {
   id: number;
@@ -55,10 +47,9 @@ interface ReceivedRequest {
   created_at: string;
 }
 
-type TabType = "block" | "roommates" | "notifications";
+type TabType = "block" | "notifications";
 
 export default function BlocksPage() {
-  const searchParams = useSearchParams();
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<TabType>("block");
   const [block, setBlock] = useState<Block | null>(null);
@@ -66,10 +57,7 @@ export default function BlocksPage() {
   const [copied, setCopied] = useState(false);
   const [currentStudent, setCurrentStudent] = useState<BlockMember | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState("");
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
-  const [potentialRoommates, setPotentialRoommates] = useState<PotentialRoommate[]>([]);
-  const [isLoadingRoommates, setIsLoadingRoommates] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [receivedRequests, setReceivedRequests] = useState<ReceivedRequest[]>([]);
   const [isLoadingRequests, setIsLoadingRequests] = useState(false);
@@ -81,85 +69,7 @@ export default function BlocksPage() {
     roommates?: BlockMember[];
   } | null>(null);
 
-  // Set active tab from URL query parameter
-  useEffect(() => {
-    const tabParam = searchParams.get("tab");
-    if (tabParam === "roommates") {
-      setActiveTab("roommates");
-    }
-  }, [searchParams]);
 
-  // Filter roommates by name or major based on the search query
-  const normalizedQuery = searchQuery.trim().toLowerCase();
-  const filteredRoommates = normalizedQuery
-    ? potentialRoommates.filter((roommate) =>
-        [roommate.name, roommate.major]
-          .some((field) => field.toLowerCase().includes(normalizedQuery))
-      )
-    : potentialRoommates;
-
-  const handleSendRequest = async (roommate: PotentialRoommate) => {
-    const timestamp = new Date().toISOString();
-
-    try {
-      const session = await authClient.getSession();
-      const headers: HeadersInit = {
-        'Content-Type': 'application/json',
-        ...(session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {}),
-      };
-
-      const response = await fetch('/api/roommate-requests', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          receiver_id: roommate.id,
-          block_code: block?.code || null,
-          message: block 
-            ? `Hi! I'd like you to join my block. Use code: ${block.code}`
-            : `Hi! Would you like to be roommates?`,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        setNotifications((prev) => [
-          ...prev,
-          {
-            id: Date.now(),
-            roommateName: roommate.name,
-            message: `Failed to send request: ${data.error}`,
-            timestamp,
-          },
-        ]);
-      } else {
-        setNotifications((prev) => [
-          ...prev,
-          {
-            id: Date.now(),
-            roommateName: roommate.name,
-            roomCode: block?.code,
-            message: block
-              ? `Request sent to ${roommate.name} with block code ${block.code}`
-              : `Roommate request sent to ${roommate.name}`,
-            timestamp,
-          },
-        ]);
-      }
-    } catch (error: any) {
-      setNotifications((prev) => [
-        ...prev,
-        {
-          id: Date.now(),
-          roommateName: roommate.name,
-          message: `Error: ${error.message || 'Failed to send request'}`,
-          timestamp,
-        },
-      ]);
-    }
-    
-    setActiveTab("notifications");
-  };
 
   // Load user and their block
   useEffect(() => {
@@ -438,36 +348,6 @@ export default function BlocksPage() {
     }
   };
 
-  // Load potential roommates when roommates tab is active
-  useEffect(() => {
-    if (activeTab === 'roommates' && !isLoadingRoommates) {
-      setIsLoadingRoommates(true);
-      const loadRoommates = async () => {
-        try {
-          const session = await authClient.getSession();
-          const headers: HeadersInit = session?.access_token 
-            ? { 'Authorization': `Bearer ${session.access_token}` } 
-            : {};
-          
-          const query = searchQuery.trim();
-          const url = query 
-            ? `/api/students/search?q=${encodeURIComponent(query)}&limit=20`
-            : '/api/students/search?limit=20';
-          
-          const response = await fetch(url, { headers });
-          if (response.ok) {
-            const data = await response.json();
-            setPotentialRoommates(data.students || []);
-          }
-        } catch (error) {
-          console.error('Error loading roommates:', error);
-        } finally {
-          setIsLoadingRoommates(false);
-        }
-      };
-      loadRoommates();
-    }
-  }, [activeTab, searchQuery]);
 
   if (isLoading) {
     return (
@@ -530,14 +410,6 @@ export default function BlocksPage() {
               >
                 <Home className="w-5 h-5 mr-2" />
                 My Block
-              </Button>
-              <Button
-                variant={activeTab === "roommates" ? "default" : "ghost"}
-                onClick={() => setActiveTab("roommates")}
-                className="rounded-b-none text-base"
-              >
-                <Users className="w-5 h-5 mr-2" />
-                Find Roommates
               </Button>
               <Button
                 variant={activeTab === "notifications" ? "default" : "ghost"}
@@ -805,85 +677,6 @@ export default function BlocksPage() {
           </Card>
         )}
           </div>
-        )}
-
-        {/* Roommates Tab Content */}
-        {activeTab === "roommates" && (
-          <Card className="bg-white">
-            <CardContent className="pt-6 space-y-8">
-              {/* Search Section */}
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <Search className="w-5 h-5" />
-                  <h3 className="text-lg font-semibold">Search Roommates</h3>
-                </div>
-                <p className="text-sm text-muted-foreground mb-4">Find students based on major, interests, or preferences</p>
-                <div className="flex gap-4">
-                  <div className="flex-1">
-                    <Label htmlFor="search">Search</Label>
-                    <Input
-                      id="search"
-                      placeholder="Search by name, major, or interests..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                    />
-                  </div>
-                  <div className="flex items-end">
-                    <Button disabled={isLoadingRoommates}>
-                      {isLoadingRoommates ? 'Searching...' : 'Search'}
-                    </Button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Roommate Requests Section */}
-              <div className="border-t pt-6">
-                <h3 className="text-lg font-semibold mb-2">My Roommate Requests</h3>
-                <p className="text-sm text-muted-foreground mb-4">View pending and accepted requests</p>
-                <p className="text-sm text-muted-foreground">No pending requests</p>
-              </div>
-
-              {/* Potential Roommates List */}
-              <div className="border-t pt-6">
-                <h2 className="text-2xl font-semibold mb-4">Potential Roommates</h2>
-                {isLoadingRoommates ? (
-                  <p className="text-sm text-muted-foreground">Loading roommates...</p>
-                ) : (
-                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    {filteredRoommates.map((roommate) => (
-                      <Card key={roommate.id}>
-                        <CardHeader>
-                          <CardTitle className="text-lg">{roommate.name}</CardTitle>
-                          <CardDescription>{roommate.major} • {roommate.year}</CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                          <div className="space-y-2">
-                            {roommate.gender && (
-                              <div>
-                                <p className="text-sm font-medium">Gender</p>
-                                <p className="text-sm text-muted-foreground">{roommate.gender}</p>
-                              </div>
-                            )}
-                            <Button
-                              className="w-full mt-4"
-                              onClick={() => handleSendRequest(roommate)}
-                            >
-                              Send Request
-                            </Button>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
-                    {filteredRoommates.length === 0 && !isLoadingRoommates && (
-                      <p className="text-sm text-muted-foreground col-span-full">
-                        No roommates found. Try a different search query.
-                      </p>
-                    )}
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
         )}
 
         {/* Notifications Tab Content */}
