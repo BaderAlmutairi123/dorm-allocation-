@@ -1,3 +1,5 @@
+
+
 'use client'
 
 import Link from "next/link";
@@ -12,6 +14,7 @@ import {
 import { useEffect, useState } from "react";
 import { authClient } from "@/lib/supabase/auth";
 import { usePathname } from "next/navigation";
+import { Menu } from "lucide-react";
 
 export default function NavigationMenuApp() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -95,7 +98,10 @@ export default function NavigationMenuApp() {
     <NavigationMenu>
       <NavigationMenuList>
         <NavigationMenuItem>
-          <NavigationMenuTrigger>{getPageName()}</NavigationMenuTrigger>
+          <NavigationMenuTrigger className="flex items-center gap-2">
+            <Menu className="h-5 w-5" />
+            <span className="hidden sm:inline">{getPageName()}</span>
+          </NavigationMenuTrigger>
           <NavigationMenuContent>
             <ul className="grid gap-3 p-4 md:w-[500px] grid-cols-2">
               <li>
