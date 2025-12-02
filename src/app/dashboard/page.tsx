@@ -258,7 +258,7 @@ export default function DashboardPage() {
             <CardDescription>Common tasks and next steps</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4">
               {status.applicationStatus === 'Assigned' ? (
                 <Link href="/assignment" className="w-full">
                   <Button className="w-full justify-start" variant="outline">
@@ -274,13 +274,6 @@ export default function DashboardPage() {
                   </Button>
                 </Link>
               )}
-
-              <Link href="/blocks" className="w-full">
-                <Button className="w-full justify-start bg-[#2D3BA6] text-white hover:bg-[#1f2a70]">
-                  <Users className="mr-2 h-4 w-4" />
-                  Find Roommates
-                </Button>
-              </Link>
             </div>
             
             {/* Run Matching Button - Show when application is pending or submitted */}

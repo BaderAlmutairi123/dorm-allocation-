@@ -220,7 +220,14 @@ export default function AssignmentPage() {
               <div>
                 <p className="text-sm text-gray-600 mb-1">Capacity</p>
                 <p className="text-xl font-semibold">
-                  {assignment.room?.current_occupancy || 0} / {assignment.room?.max_capacity || 0} students
+                  {/* Calculate current occupancy from roommates (including current user) */}
+                  {(assignment.roommates?.length || 0) + 1} / {
+                    /* Use max_capacity from DB, or infer from room_type if not set */
+                    assignment.room?.max_capacity ||
+                    (assignment.room?.room_type === 'Single' ? 1 :
+                     assignment.room?.room_type === 'Double' ? 2 :
+                     assignment.room?.room_type === 'Triple' ? 3 : 4)
+                  } students
                 </p>
               </div>
 
@@ -303,7 +310,7 @@ export default function AssignmentPage() {
         {/* No Roommates Message */}
         {assignment.roommates?.length === 0 && (assignment.room?.current_occupancy || 0) < (assignment.room?.max_capacity || 1) && (
           <Card className="mb-6">
-            <CardContent className="pt-6">
+            <CardContent className="py-6">
               <p className="text-gray-600 text-center">
                 You're the first person assigned to this room. More roommates will be added as assignments are completed.
               </p>
