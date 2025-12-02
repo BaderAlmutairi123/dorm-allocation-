@@ -229,6 +229,14 @@ async function getAvailableRooms(): Promise<Room[]> {
 
   // Filter rooms where current_occupancy < max_capacity and room has valid ID
   // Handle column name 'room.id' (with dot) - Supabase returns it as 'room.id' property
+  
+  // Log raw room data for debugging
+  console.log('Raw rooms from database:', rooms.length, 'rooms')
+  if (rooms.length > 0) {
+    console.log('Sample room keys:', Object.keys(rooms[0]))
+    console.log('Sample room:', JSON.stringify(rooms[0]))
+  }
+  
   return rooms
     .filter(room => {
       // Get ID - try both 'room.id' (with dot) and 'id' (without dot)
@@ -236,7 +244,7 @@ async function getAvailableRooms(): Promise<Room[]> {
       
       // Ensure room has valid ID
       if (!roomId || roomId === null || roomId === undefined) {
-        console.warn('Room missing ID:', room)
+        console.warn('Room missing ID. Room keys:', Object.keys(room), 'Room:', room)
         return false
       }
       return (room.current_occupancy || 0) < (room.max_capacity || 0)
@@ -245,7 +253,7 @@ async function getAvailableRooms(): Promise<Room[]> {
       // Get ID - try both 'room.id' (with dot) and 'id' (without dot)
       const roomId = (room as any)['room.id'] || (room as any).id
       
-      return {
+      const mappedRoom = {
         id: String(roomId), // Convert to string for consistency
         building_name: room.dorm_id ? `Dorm ${room.dorm_id}` : 'Unknown', // Use dorm_id as building reference
         room_number: room.room_number,
@@ -256,6 +264,11 @@ async function getAvailableRooms(): Promise<Room[]> {
         dorm_id: room.dorm_id, // Store dorm_id for reference
         current_occupancy: room.current_occupancy || 0,
       }
+      
+      // Log room type mapping for debugging
+      console.log(`Room ${mappedRoom.room_number}: type="${room.room_type}" -> "${mappedRoom.room_type}", capacity=${mappedRoom.capacity}`)
+      
+      return mappedRoom
     })
     .filter(room => room.id && room.id !== 'undefined' && room.id !== 'null') // Additional safety check
 }
@@ -526,13 +539,23 @@ export async function runMatchingAlgorithm(): Promise<{
       
       // Process Single room students first - no roommate matching needed
       for (const student of singleRoomStudents) {
+        console.log(`\nProcessing Single room student: ${student.student_id}`)
+        console.log(`Student preference: ${student.preferences?.preferred_room_type}`)
+        
         // Find available Single room - ONLY Single rooms, no fallback to other types
         const singleRooms = rooms.filter(room => {
-          const currentOccupancy = occupancy.get(room.id) || (room.current_occupancy || 0)
+          const occupancyFromMap = occupancy.get(room.id)
+          const roomOccupancy = room.current_occupancy || 0
+          // Prioritize occupancy map (from room_assignments) as it's the source of truth
+          // Fall back to room.current_occupancy only if map has no data
+          const currentOccupancy = occupancyFromMap !== undefined ? occupancyFromMap : roomOccupancy
           const hasSpace = room.capacity > currentOccupancy
           const isSingle = room.room_type?.toLowerCase() === 'single'
+          console.log(`  Room ${room.room_number} (id=${room.id}): type="${room.room_type}", isSingle=${isSingle}, capacity=${room.capacity}, occupancy=${currentOccupancy} (map=${occupancyFromMap}, room=${roomOccupancy}), hasSpace=${hasSpace}`)
           return hasSpace && isSingle
         })
+        
+        console.log(`Found ${singleRooms.length} available Single rooms`)
         
         if (singleRooms.length > 0) {
           const selectedRoom = singleRooms[0]
@@ -605,8 +628,14 @@ export async function runMatchingAlgorithm(): Promise<{
           // Find suitable room - STRICTLY match room type preference
           const roomTypePreference = student.preferences?.preferred_room_type
           
+          console.log(`\nProcessing shared room student: ${student.student_id}`)
+          console.log(`Student preference: ${roomTypePreference}`)
+          
           let suitableRooms = rooms.filter(room => {
-            const currentOccupancy = occupancy.get(room.id) || (room.current_occupancy || 0)
+            // Prioritize occupancy map (from room_assignments) as it's the source of truth
+            const occupancyFromMap = occupancy.get(room.id)
+            const roomOccupancy = room.current_occupancy || 0
+            const currentOccupancy = occupancyFromMap !== undefined ? occupancyFromMap : roomOccupancy
             const hasSpace = room.capacity > currentOccupancy
             if (!hasSpace) return false
             
@@ -614,11 +643,15 @@ export async function runMatchingAlgorithm(): Promise<{
             if (roomTypePreference) {
               const roomTypeLower = room.room_type?.toLowerCase()
               const prefTypeLower = roomTypePreference.toLowerCase()
-              return roomTypeLower === prefTypeLower
+              const matches = roomTypeLower === prefTypeLower
+              console.log(`  Room ${room.room_number} (id=${room.id}): type="${room.room_type}" (${roomTypeLower}) vs preference "${prefTypeLower}", capacity=${room.capacity}, occupancy=${currentOccupancy} (map=${occupancyFromMap}, room=${roomOccupancy}) -> match=${matches}`)
+              return matches
             }
             // No preference = only match Double or Suite (not Single)
             return room.room_type?.toLowerCase() !== 'single'
           })
+          
+          console.log(`Found ${suitableRooms.length} suitable ${roomTypePreference || 'shared'} rooms`)
           
           // NO FALLBACK - only assign to correct room type
           // If no matching rooms available, student will be unmatched
@@ -788,20 +821,31 @@ export async function runMatchingAlgorithm(): Promise<{
     }
 
     // Update room current_occupancy (your schema uses current_occupancy instead of is_available)
-    const assignedRoomIds = [...new Set(validMatches.map(m => m.room_id).filter(id => id !== undefined && id !== null))]
-    for (const roomId of assignedRoomIds) {
-      if (!roomId) {
-        continue // Skip undefined/null room IDs
+    // First, count how many students are assigned to each room in this batch
+    const newAssignmentCounts = new Map<string, number>()
+    for (const match of validMatches) {
+      if (match.room_id) {
+        const roomIdStr = String(match.room_id)
+        newAssignmentCounts.set(roomIdStr, (newAssignmentCounts.get(roomIdStr) || 0) + 1)
       }
+    }
 
+    const assignedRoomIds = [...newAssignmentCounts.keys()]
+    for (const roomId of assignedRoomIds) {
       // Find room by 'room.id' (column name has a dot)
       const room = rooms.find(r => {
         const rId = (r as any)['room.id'] || r.id
-        return rId === roomId || rId === parseInt(String(roomId))
+        return String(rId) === roomId || rId === parseInt(roomId)
       })
       
       if (room) {
-        const newOccupancy = occupancy.get(roomId) || (room.current_occupancy || 0)
+        // Get current occupancy from map (source of truth) or room table
+        const currentOccupancy = occupancy.get(roomId) ?? (room.current_occupancy || 0)
+        // Add the new assignments to get the new total
+        const newStudentsAssigned = newAssignmentCounts.get(roomId) || 0
+        const newOccupancy = currentOccupancy + newStudentsAssigned
+        
+        console.log(`Updating room ${room.room_number} (id=${roomId}): occupancy ${currentOccupancy} + ${newStudentsAssigned} = ${newOccupancy}`)
         
         // Update current_occupancy in rooms table
         // Column name is 'room.id' (with dot) - match by dorm_id and room_number instead
