@@ -431,6 +431,30 @@ export async function POST(request: NextRequest) {
       .update({ current_capacity: 1 })
       .eq('block_id', newBlock.block_id)
 
+    // Update the creator's room assignment with the new block_id
+    const { data: existingAssignment } = await dbClient
+      .from('room_assignments')
+      .select('assignment_id')
+      .eq('student_id', user.id)
+      .maybeSingle()
+
+    if (existingAssignment) {
+      // Update existing assignment with block_id
+      await dbClient
+        .from('room_assignments')
+        .update({ block_id: newBlock.block_id })
+        .eq('student_id', user.id)
+    } else {
+      // Create new assignment with block_id
+      await dbClient
+        .from('room_assignments')
+        .insert({
+          student_id: user.id,
+          block_id: newBlock.block_id,
+          status: 'Pending',
+        })
+    }
+
     return NextResponse.json({
       success: true,
       block: {

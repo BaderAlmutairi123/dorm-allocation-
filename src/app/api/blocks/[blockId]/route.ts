@@ -138,6 +138,16 @@ export async function DELETE(
         .eq('block_id', blockId)
     }
 
+    // Reset the user's room assignment (remove block_id and room_id, set to Pending)
+    await dbClient
+      .from('room_assignments')
+      .update({
+        block_id: null,
+        room_id: null,
+        status: 'Pending',
+      })
+      .eq('student_id', user.id)
+
     return NextResponse.json({
       success: true,
       message: 'Successfully left block',
