@@ -11,17 +11,16 @@ import {
   CheckCircle2, 
   Clock, 
   Home, 
-  FileText, 
   Users, 
   AlertCircle,
-  ArrowRight,
-  Calendar
+  ArrowRight
 } from "lucide-react";
 
 interface ApplicationStatus {
   profileComplete: boolean;
   preferencesComplete: boolean;
   applicationStatus: 'Not Started' | 'Pending' | 'Assigned';
+  isSingleRoom: boolean;
   assignment?: {
     room_number: string;
     dorm_name: string;
@@ -37,10 +36,9 @@ export default function DashboardPage() {
     profileComplete: false,
     preferencesComplete: false,
     applicationStatus: 'Not Started',
+    isSingleRoom: false,
   });
   const [userName, setUserName] = useState("");
-  const [isRunningMatching, setIsRunningMatching] = useState(false);
-  const [matchingMessage, setMatchingMessage] = useState("");
 
   useEffect(() => {
     const loadDashboard = async () => {
@@ -85,6 +83,12 @@ export default function DashboardPage() {
 
         let applicationStatus: 'Not Started' | 'Pending' | 'Assigned' = 'Not Started';
         let assignmentData = null;
+        let isSingleRoom = false;
+
+        // Check if student has a single room preference
+        if (preferences?.preferred_room_type === 'Single') {
+          isSingleRoom = true;
+        }
 
         if (assignment) {
           if (assignment.status === 'Confirmed' && assignment.room_id) {
@@ -99,6 +103,11 @@ export default function DashboardPage() {
               const roomId = r['room.id'] || r.room_id || r.id;
               return roomId === assignment.room_id || roomId === parseInt(assignment.room_id);
             });
+            
+            // Check if assigned room is a single room
+            if (room?.room_type === 'Single' || room?.max_capacity === 1) {
+              isSingleRoom = true;
+            }
             
             let dormName = 'Unknown Building';
             if (room?.dorm_id) {
@@ -125,6 +134,7 @@ export default function DashboardPage() {
           profileComplete,
           preferencesComplete,
           applicationStatus,
+          isSingleRoom,
           assignment: assignmentData || undefined,
         });
 
@@ -258,95 +268,23 @@ export default function DashboardPage() {
             <CardDescription>Common tasks and next steps</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 gap-4">
-              {status.applicationStatus === 'Assigned' ? (
-                <Link href="/assignment" className="w-full">
-                  <Button className="w-full justify-start" variant="outline">
-                    <Home className="mr-2 h-4 w-4" />
-                    View Room Assignment
-                  </Button>
-                </Link>
-              ) : (
-                <Link href="/application" className="w-full">
+            <div className={`grid grid-cols-1 ${!status.isSingleRoom ? 'md:grid-cols-2' : ''} gap-4`}>
+              <Link href="/assignment" className="w-full">
+                <Button className="w-full justify-start" variant="outline">
+                  <Home className="mr-2 h-4 w-4" />
+                  View Room Assignment
+                </Button>
+              </Link>
+
+              {!status.isSingleRoom && (
+                <Link href="/blocks" className="w-full">
                   <Button className="w-full justify-start bg-[#2D3BA6] text-white hover:bg-[#1f2a70]">
-                    <FileText className="mr-2 h-4 w-4" />
-                    {status.applicationStatus === 'Not Started' ? 'Start Application' : 'Update Application'}
+                    <Users className="mr-2 h-4 w-4" />
+                    Block
                   </Button>
                 </Link>
               )}
             </div>
-            
-            {/* Run Matching Button - Show when application is pending or submitted */}
-            {(status.applicationStatus === 'Pending' || (status.profileComplete && status.preferencesComplete)) && (
-              <div className="mt-4 pt-4 border-t">
-                <Button 
-                  className="w-full bg-[#2D3BA6] text-white hover:bg-[#1f2a70]" 
-                  onClick={async () => {
-                    setIsRunningMatching(true);
-                    setMatchingMessage("");
-                    try {
-                      const response = await fetch('/api/matching/run', {
-                        method: 'POST',
-                      });
-                      const data = await response.json();
-                      
-                      if (data.success) {
-                        // Check if current user was matched
-                        const user = await authClient.getUser();
-                        const currentUserId = user?.id;
-                        const matchedStudentIds = data.matchedStudentIds || [];
-                        const wasMatched = currentUserId && matchedStudentIds.includes(currentUserId);
-                        
-                        if (wasMatched) {
-                          setMatchingMessage(`🎉 You have been assigned a room! Redirecting to view your assignment...`);
-                          // Redirect to assignment page to see results
-                          setTimeout(() => {
-                            router.push('/assignment');
-                          }, 1500);
-                        } else if (data.matched > 0) {
-                          setMatchingMessage(`✓ ${data.message || 'Matching completed.'} You were not matched in this round.`);
-                          // Reload to check status
-                          setTimeout(() => {
-                            window.location.reload();
-                          }, 2000);
-                        } else {
-                          setMatchingMessage(`✓ ${data.message || 'No pending students to match.'}`);
-                        }
-                      } else {
-                        // Show detailed errors if available
-                        const errorDetails = data.errors && data.errors.length > 0 
-                          ? `\nErrors: ${data.errors.join(', ')}`
-                          : '';
-                        const message = `${data.message || data.error || 'Matching completed with some issues'}${errorDetails}`;
-                        setMatchingMessage(`⚠ ${message}`);
-                        // Also log to console for debugging
-                        console.error('Matching errors:', data.errors);
-                      }
-                    } catch (error: any) {
-                      setMatchingMessage(`✗ Error: ${error.message || 'Failed to run matching'}`);
-                    } finally {
-                      setIsRunningMatching(false);
-                    }
-                  }}
-                  disabled={isRunningMatching}
-                >
-                  <Calendar className="mr-2 h-4 w-4" />
-                  {isRunningMatching ? 'Running Matching...' : 'Run Matching Algorithm'}
-                </Button>
-              </div>
-            )}
-            
-            {matchingMessage && (
-              <div className={`mt-4 p-3 rounded-md text-sm ${
-                matchingMessage.startsWith('✓') 
-                  ? 'bg-green-50 text-green-700 border border-green-200' 
-                  : matchingMessage.startsWith('⚠')
-                  ? 'bg-yellow-50 text-yellow-700 border border-yellow-200'
-                  : 'bg-red-50 text-red-700 border border-red-200'
-              }`}>
-                {matchingMessage}
-              </div>
-            )}
           </CardContent>
         </Card>
 

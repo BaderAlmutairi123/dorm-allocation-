@@ -240,28 +240,6 @@ export default function AssignmentPage() {
                 </div>
               )}
             </div>
-
-            {/* Room Features */}
-            <div className="mt-6 pt-6 border-t">
-              <p className="text-sm font-medium mb-2">Room Features</p>
-              <div className="flex flex-wrap gap-4">
-                {assignment.room?.wants_suite_bathroom && (
-                  <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
-                    Suite Bathroom
-                  </span>
-                )}
-                {assignment.room?.is_accessible && (
-                  <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm">
-                    Accessible
-                  </span>
-                )}
-                {assignment.room?.dorm?.dorm_gender && (
-                  <span className="px-3 py-1 bg-gray-100 text-gray-800 rounded-full text-sm">
-                    {assignment.room.dorm.dorm_gender} Housing
-                  </span>
-                )}
-              </div>
-            </div>
           </CardContent>
         </Card>
 

@@ -32,8 +32,6 @@ export default function NavigationMenuApp() {
         return 'My Assignment';
       case '/blocks':
         return 'Blocks';
-      case '/roommates':
-        return 'Roommates';
       default:
         return 'Menu';
     }

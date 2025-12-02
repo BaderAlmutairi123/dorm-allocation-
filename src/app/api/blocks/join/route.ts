@@ -3,6 +3,14 @@ import { createClient } from '@supabase/supabase-js'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+// Admin client for bypassing RLS when needed
+const supabaseAdmin = supabaseServiceKey 
+  ? createClient(supabaseUrl, supabaseServiceKey, {
+      auth: { autoRefreshToken: false, persistSession: false }
+    })
+  : null
 
 /**
  * POST /api/blocks/join
@@ -33,6 +41,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Use admin client if available for bypassing RLS
+    const dbClient = supabaseAdmin || supabase
+
     const body = await request.json()
     const { code } = body
 
@@ -44,7 +55,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if user is already in a block
-    const { data: existingMembership } = await supabase
+    const { data: existingMembership } = await dbClient
       .from('block_members')
       .select('block_id')
       .eq('student_id', user.id)
@@ -58,7 +69,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Find block by code
-    const { data: block, error: blockError } = await supabase
+    const { data: block, error: blockError } = await dbClient
       .from('student_blocks')
       .select('*')
       .eq('code', code.toUpperCase())
@@ -80,7 +91,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Add user to block
-    const { error: memberError } = await supabase
+    const { error: memberError } = await dbClient
       .from('block_members')
       .insert({
         block_id: block.block_id,
@@ -96,11 +107,81 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Update block capacity
-    await supabase
-      .from('student_blocks')
-      .update({ current_capacity: block.current_capacity + 1 })
+    // Update block capacity by counting actual members
+    const { data: allMembers } = await dbClient
+      .from('block_members')
+      .select('student_id')
       .eq('block_id', block.block_id)
+
+    await dbClient
+      .from('student_blocks')
+      .update({ current_capacity: allMembers?.length || 1 })
+      .eq('block_id', block.block_id)
+
+    // Find the block leader's room assignment and update joining student's assignment
+    const { data: blockLeader } = await dbClient
+      .from('block_members')
+      .select('student_id')
+      .eq('block_id', block.block_id)
+      .eq('is_leader', true)
+      .maybeSingle()
+
+    if (blockLeader) {
+      // Get the leader's room assignment
+      const { data: leaderAssignment } = await dbClient
+        .from('room_assignments')
+        .select('room_id, status, block_id')
+        .eq('student_id', blockLeader.student_id)
+        .maybeSingle()
+
+      // Check if the joining student has an existing room assignment
+      const { data: existingAssignment } = await dbClient
+        .from('room_assignments')
+        .select('assignment_id')
+        .eq('student_id', user.id)
+        .maybeSingle()
+
+      if (leaderAssignment && leaderAssignment.room_id) {
+        // Leader has a room - update joining student to same room
+        if (existingAssignment) {
+          // Update existing assignment to match leader's room
+          await dbClient
+            .from('room_assignments')
+            .update({
+              block_id: block.block_id,
+              room_id: leaderAssignment.room_id,
+              status: leaderAssignment.status === 'Confirmed' ? 'Confirmed' : 'Pending',
+            })
+            .eq('student_id', user.id)
+        } else {
+          // Create new assignment matching leader's room
+          await dbClient
+            .from('room_assignments')
+            .insert({
+              student_id: user.id,
+              block_id: block.block_id,
+              room_id: leaderAssignment.room_id,
+              status: leaderAssignment.status === 'Confirmed' ? 'Confirmed' : 'Pending',
+            })
+        }
+      } else {
+        // Leader doesn't have a room yet - just set block_id
+        if (existingAssignment) {
+          await dbClient
+            .from('room_assignments')
+            .update({ block_id: block.block_id })
+            .eq('student_id', user.id)
+        } else {
+          await dbClient
+            .from('room_assignments')
+            .insert({
+              student_id: user.id,
+              block_id: block.block_id,
+              status: 'Pending',
+            })
+        }
+      }
+    }
 
     return NextResponse.json({
       success: true,
