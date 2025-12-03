@@ -1,5 +1,5 @@
 import { supabase } from './client'
-import { supabaseServer } from './server'
+import { supabaseServerClient } from './server'
 import type { Student } from './types'
 
 // Client-side authentication helpers
@@ -97,7 +97,7 @@ export const authServer = {
    * Get user from server-side (for API routes and server components)
    */
   async getUser(accessToken: string) {
-    const { data, error } = await supabaseServer.auth.getUser(accessToken)
+    const { data, error } = await supabaseServerClient.auth.getUser(accessToken)
     if (error) throw error
     return data.user
   },
@@ -107,7 +107,7 @@ export const authServer = {
    */
   async verifyToken(token: string) {
     try {
-      const { data, error } = await supabaseServer.auth.getUser(token)
+      const { data, error } = await supabaseServerClient.auth.getUser(token)
       if (error) return null
       return data.user
     } catch {
