@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase/client'
 
-export async function POST(request: NextRequest) {
+export async function POST() {
   try {
     // Sign out using client-side Supabase (this handles the session properly)
     const { error } = await supabase.auth.signOut()

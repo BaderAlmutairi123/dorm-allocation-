@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabaseServer } from '@/lib/supabase/server'
+import { supabaseServerClient } from '@/lib/supabase/server'
 
 export async function POST(request: NextRequest) {
   try {
@@ -15,7 +15,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create auth user
-    const { data: authData, error: authError } = await supabaseServer.auth.signUp({
+    const { data: authData, error: authError } = await supabaseServerClient.auth.signUp({
       email,
       password,
       options: {
@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
 
     // Create student profile in database
     if (authData.user) {
-      const { error: profileError } = await supabaseServer
+      const { error: profileError } = await supabaseServerClient
         .from('students')
         .insert({
           student_id: authData.user.id,
