@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabaseAdmin, supabaseServer } from '@/lib/supabase/server'
+import { supabaseAdmin, supabaseServerClient } from '@/lib/supabase/server'
 
 export async function GET(request: NextRequest) {
   try {
@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
     const roomType = searchParams.get('room_type')
     const availableOnly = searchParams.get('available_only') === 'true'
 
-    const supabase = supabaseAdmin || supabaseServer
+    const supabase = supabaseAdmin || supabaseServerClient
 
     let query = supabase
       .from('rooms')
