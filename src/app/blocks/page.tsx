@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Users, Copy, Check, UserPlus, Home, Building, DoorOpen } from "lucide-react";
+import { Users, Copy, Check, UserPlus, Home, Building, DoorOpen, LogOut, AlertTriangle, FileText } from "lucide-react";
 import { authClient } from "@/lib/supabase/auth";
 
 interface BlockMember {
@@ -44,8 +44,9 @@ export default function BlocksPage() {
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [roomAssignment, setRoomAssignment] = useState<RoomAssignment | null>(null);
-
-
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+  const [isLeaving, setIsLeaving] = useState(false);
+  const [hasApplication, setHasApplication] = useState<boolean | null>(null);
 
   // Load user and their block
   useEffect(() => {
@@ -79,6 +80,24 @@ export default function BlocksPage() {
             const authHeaders: HeadersInit = session?.access_token 
               ? { 'Authorization': `Bearer ${session.access_token}` } 
               : {};
+
+            // First check if user has submitted an application (check for student record)
+            const studentResponse = await fetch(`/api/students/${user.id}`, { headers: authHeaders });
+            if (studentResponse.ok) {
+              const studentData = await studentResponse.json();
+              // Check if the student has phone/gender set (required fields from application)
+              if (studentData.phone && studentData.gender) {
+                setHasApplication(true);
+              } else {
+                setHasApplication(false);
+                setIsLoading(false);
+                return; // Don't load block data if no application
+              }
+            } else {
+              setHasApplication(false);
+              setIsLoading(false);
+              return; // Don't load block data if no application
+            }
             
             const blockResponse = await fetch('/api/blocks', { headers: authHeaders });
             if (blockResponse.ok) {
@@ -250,6 +269,42 @@ export default function BlocksPage() {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const leaveBlock = async () => {
+    if (!block || !currentStudent) return;
+    setIsLeaving(true);
+    setError(null);
+
+    try {
+      const session = await authClient.getSession();
+      const headers: HeadersInit = session?.access_token 
+        ? { 'Authorization': `Bearer ${session.access_token}` } 
+        : {};
+
+      const response = await fetch(`/api/blocks/${block.id}`, {
+        method: 'DELETE',
+        headers,
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setError(data.error || 'Failed to leave block');
+        return;
+      }
+
+      // Clear block and room assignment state
+      setBlock(null);
+      setRoomAssignment(null);
+      setShowLeaveConfirm(false);
+      setSuccessMessage('You have left the block. Your room assignment has been reset.');
+    } catch (error: any) {
+      console.error('Error leaving block:', error);
+      setError(error.message || 'Failed to leave block');
+    } finally {
+      setIsLeaving(false);
+    }
+  };
+
   // Determine if user has a confirmed room without being in a block (matched by algorithm)
   const hasConfirmedRoomWithoutBlock = !block && roomAssignment && roomAssignment.status === 'Confirmed';
   
@@ -283,6 +338,43 @@ export default function BlocksPage() {
                 <Button asChild>
                   <Link href="/sign-in">Sign In</Link>
                 </Button>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Show message if user hasn't submitted an application yet
+  if (hasApplication === false) {
+    return (
+      <div className="min-h-screen" style={{ backgroundColor: '#2D3BA6' }}>
+        <div className="container mx-auto px-4 py-8">
+          <div className="max-w-4xl mx-auto">
+            <Card className="border-2 border-amber-200 bg-amber-50">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-amber-800">
+                  <FileText className="w-6 h-6" />
+                  Application Required
+                </CardTitle>
+                <CardDescription className="text-amber-700">
+                  You need to submit a room application before you can access blocks.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <p className="text-amber-900">
+                  To create or join a block with friends, you must first complete your dorm room application. 
+                  This helps us match you with the right room and roommates.
+                </p>
+                <div className="flex gap-4">
+                  <Button asChild>
+                    <Link href="/application">Submit Application</Link>
+                  </Button>
+                  <Button asChild variant="outline">
+                    <Link href="/dashboard">Go to Dashboard</Link>
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           </div>
@@ -526,6 +618,46 @@ export default function BlocksPage() {
               </Card>
             )}
 
+            {/* Leave Block Confirmation Modal */}
+            {showLeaveConfirm && (
+              <Card className="mb-6 border-2 border-amber-400 bg-amber-50">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-amber-800">
+                    <AlertTriangle className="w-5 h-5" />
+                    Leave Block?
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="bg-white p-4 rounded-lg border border-amber-200">
+                    <p className="text-amber-900 font-medium">
+                      ⚠️ If you leave your block, you will have to do your room assignment again.
+                    </p>
+                    <p className="text-sm text-amber-700 mt-2">
+                      Your current room assignment will be reset and you&apos;ll need to either join a new block or be assigned through the matching system.
+                    </p>
+                  </div>
+                  <div className="flex gap-3">
+                    <Button 
+                      variant="outline" 
+                      onClick={() => setShowLeaveConfirm(false)}
+                      className="flex-1"
+                      disabled={isLeaving}
+                    >
+                      Cancel
+                    </Button>
+                    <Button 
+                      variant="destructive" 
+                      onClick={leaveBlock}
+                      className="flex-1"
+                      disabled={isLeaving}
+                    >
+                      {isLeaving ? 'Leaving...' : 'Yes, Leave Block'}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             {/* Block Info Card */}
             <Card className="bg-white">
               <CardHeader>
@@ -540,6 +672,15 @@ export default function BlocksPage() {
                       {isBlockLeader && ' • You are the block leader'}
                     </CardDescription>
                   </div>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => setShowLeaveConfirm(true)}
+                    className="text-red-600 border-red-200 hover:bg-red-50 hover:border-red-300"
+                  >
+                    <LogOut className="w-4 h-4 mr-2" />
+                    Leave Block
+                  </Button>
                 </div>
               </CardHeader>
               <CardContent className="space-y-6">
