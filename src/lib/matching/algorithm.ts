@@ -887,7 +887,7 @@ export async function runMatchingAlgorithm(): Promise<{
               if (!blockError && newBlock) {
                 newBlockId = String(newBlock.block_id)
                 
-                if (hasGoodMatch) {
+                if (hasGoodMatch && bestMatch) {
                   // Add both students to the block
                   await supabaseAdmin
                     .from('block_members')
