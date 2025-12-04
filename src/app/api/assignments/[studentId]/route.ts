@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ studentId: string }> }
@@ -29,6 +31,13 @@ export async function GET(
         persistSession: false,
       },
     })
+
+    // Admin client for bypassing RLS when needed (for cross-user queries)
+    const supabaseAdmin = supabaseServiceKey
+      ? createClient(supabaseUrl, supabaseServiceKey, {
+          auth: { autoRefreshToken: false, persistSession: false }
+        })
+      : supabase
 
     // Verify authentication
     if (token) {
@@ -107,10 +116,11 @@ export async function GET(
     }
 
     // Get roommates if room is assigned (include both Confirmed and Pending)
+    // Use admin client to bypass RLS and see all room assignments
     let roommates: any[] = []
     if (assignment.room_id) {
       // First get all roommate student IDs
-      const { data: roommateAssignments } = await supabase
+      const { data: roommateAssignments } = await supabaseAdmin
         .from('room_assignments')
         .select('student_id, status')
         .eq('room_id', assignment.room_id)
@@ -146,9 +156,10 @@ export async function GET(
     }
 
     // Calculate actual room occupancy by counting all assignments to this room
+    // Use admin client to bypass RLS
     let actualOccupancy = 1 // At least the current user
     if (assignment.room_id) {
-      const { data: allRoomAssignments } = await supabase
+      const { data: allRoomAssignments } = await supabaseAdmin
         .from('room_assignments')
         .select('student_id')
         .eq('room_id', assignment.room_id)

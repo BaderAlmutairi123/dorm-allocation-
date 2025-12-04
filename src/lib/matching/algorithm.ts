@@ -106,29 +106,30 @@ export function calculateCompatibility(
   totalScore += breakdown.bedtime * 0.25
 
   // Noise level compatibility (weight: 25%)
-  if (pref1.noise_level !== null && pref2.noise_level !== null) {
-    const diff = Math.abs(pref1.noise_level - pref2.noise_level)
-    // Closer values = higher compatibility
-    breakdown.noiseLevel = Math.max(0, 100 - diff * 20)
+  // Use != null to check for both null AND undefined
+  if (pref1.noise_level != null && pref2.noise_level != null) {
+    const diff = Math.abs(Number(pref1.noise_level) - Number(pref2.noise_level))
+    // Closer values = higher compatibility (scale 1-5, max diff = 4)
+    breakdown.noiseLevel = Math.max(0, 100 - diff * 25)
   } else {
     breakdown.noiseLevel = 50
   }
   totalScore += breakdown.noiseLevel * 0.25
 
   // Cleanliness compatibility (weight: 25%)
-  if (pref1.cleanliness_level !== null && pref2.cleanliness_level !== null) {
-    const diff = Math.abs(pref1.cleanliness_level - pref2.cleanliness_level)
-    // Closer values = higher compatibility
-    breakdown.cleanliness = Math.max(0, 100 - diff * 20)
+  if (pref1.cleanliness_level != null && pref2.cleanliness_level != null) {
+    const diff = Math.abs(Number(pref1.cleanliness_level) - Number(pref2.cleanliness_level))
+    // Closer values = higher compatibility (scale 1-5, max diff = 4)
+    breakdown.cleanliness = Math.max(0, 100 - diff * 25)
   } else {
     breakdown.cleanliness = 50
   }
   totalScore += breakdown.cleanliness * 0.25
 
   // Guest policy compatibility (weight: 25%)
-  if (pref1.guest_policy_preference !== null && pref2.guest_policy_preference !== null) {
-    const diff = Math.abs(pref1.guest_policy_preference - pref2.guest_policy_preference)
-    // Closer values = higher compatibility
+  if (pref1.guest_policy_preference != null && pref2.guest_policy_preference != null) {
+    const diff = Math.abs(Number(pref1.guest_policy_preference) - Number(pref2.guest_policy_preference))
+    // Closer values = higher compatibility (scale 1-5, max diff = 4)
     breakdown.guestPolicy = Math.max(0, 100 - diff * 25)
   } else {
     breakdown.guestPolicy = 50
@@ -963,7 +964,7 @@ export async function runMatchingAlgorithm(): Promise<{
               if (!blockError && newBlock) {
                 newBlockId = String(newBlock.block_id)
                 
-                if (hasGoodMatch) {
+                if (hasGoodMatch && bestMatch) {
                   // Add both students to the block
                   await supabaseAdmin
                     .from('block_members')

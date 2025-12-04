@@ -137,6 +137,15 @@ export async function DELETE(
         .eq('block_id', blockId)
     }
 
+    // Get the user's current room assignment before resetting
+    const { data: userAssignment } = await dbClient
+      .from('room_assignments')
+      .select('room_id')
+      .eq('student_id', user.id)
+      .maybeSingle()
+
+    const previousRoomId = userAssignment?.room_id
+
     // Reset the user's room assignment (remove block_id and room_id, set to Pending)
     await dbClient
       .from('room_assignments')
@@ -146,6 +155,41 @@ export async function DELETE(
         status: 'Pending',
       })
       .eq('student_id', user.id)
+
+    // Update the room's current_occupancy if the user had a room
+    if (previousRoomId) {
+      // Count remaining assignments for this room
+      const { data: roomAssignments } = await dbClient
+        .from('room_assignments')
+        .select('student_id')
+        .eq('room_id', previousRoomId)
+        .in('status', ['Confirmed', 'Pending'])
+
+      const newOccupancy = roomAssignments?.length || 0
+      console.log(`Updating room ${previousRoomId} occupancy to ${newOccupancy} after user left block`)
+
+      // Get room details to find dorm_id and room_number for update
+      const { data: roomData } = await dbClient
+        .from('rooms')
+        .select('*')
+        .limit(100)
+
+      // Find the room by matching room_id (column might be 'room.id' or 'id')
+      const targetRoom = roomData?.find((r: any) => {
+        const roomId = r['room.id'] || r.id
+        return roomId === previousRoomId || String(roomId) === String(previousRoomId)
+      })
+
+      if (targetRoom) {
+        await dbClient
+          .from('rooms')
+          .update({ current_occupancy: newOccupancy })
+          .eq('dorm_id', targetRoom.dorm_id)
+          .eq('room_number', targetRoom.room_number)
+        
+        console.log(`Updated room ${targetRoom.room_number} in dorm ${targetRoom.dorm_id} to occupancy ${newOccupancy}`)
+      }
+    }
 
     return NextResponse.json({
       success: true,

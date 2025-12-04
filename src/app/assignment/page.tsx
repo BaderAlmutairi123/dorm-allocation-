@@ -15,7 +15,8 @@ import {
   Mail,
   ArrowLeft,
   CheckCircle2,
-  Clock
+  Clock,
+  FileText
 } from "lucide-react";
 
 interface Roommate {
@@ -58,6 +59,7 @@ export default function AssignmentPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [assignment, setAssignment] = useState<Assignment | null>(null);
   const [error, setError] = useState("");
+  const [hasApplication, setHasApplication] = useState<boolean | null>(null);
 
   useEffect(() => {
     const loadAssignment = async () => {
@@ -72,6 +74,29 @@ export default function AssignmentPage() {
         if (!user) {
           router.push('/sign-in');
           return;
+        }
+
+        // First check if user has submitted an application
+        const studentResponse = await fetch(`/api/students/${user.id}`, {
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+        });
+        
+        if (studentResponse.ok) {
+          const studentData = await studentResponse.json();
+          // Check if the student has phone/gender set (required fields from application)
+          if (studentData.phone && studentData.gender) {
+            setHasApplication(true);
+          } else {
+            setHasApplication(false);
+            setIsLoading(false);
+            return; // Don't load assignment if no application
+          }
+        } else {
+          setHasApplication(false);
+          setIsLoading(false);
+          return; // Don't load assignment if no application
         }
 
         // Fetch assignment
@@ -93,10 +118,11 @@ export default function AssignmentPage() {
           return;
         }
 
-        if (data.assignment) {
+        if (data.assignment && data.assignment.room_id) {
           setAssignment(data.assignment);
         } else {
-          setError('No assignment found. Your application may still be under review.');
+          // No room assigned yet (either no assignment or room_id is null)
+          setError('Your room assignment is still pending. Check back later!');
         }
 
         setIsLoading(false);
@@ -118,6 +144,48 @@ export default function AssignmentPage() {
             <div className="h-8 bg-white/20 rounded w-1/4 mb-4"></div>
             <div className="h-64 bg-white/20 rounded"></div>
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Show message if user hasn't submitted an application yet
+  if (hasApplication === false) {
+    return (
+      <div className="min-h-screen" style={{ backgroundColor: '#2D3BA6' }}>
+        <div className="container mx-auto px-4 py-8 max-w-4xl">
+          <Link href="/dashboard">
+            <Button variant="ghost" className="mb-4 text-white hover:bg-white/10">
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back to Dashboard
+            </Button>
+          </Link>
+
+          <Card className="border-2 border-amber-200 bg-amber-50">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-amber-800">
+                <FileText className="w-6 h-6" />
+                Application Required
+              </CardTitle>
+              <CardDescription className="text-amber-700">
+                You need to submit a room application before you can view your assignment.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-amber-900">
+                To view your room assignment, you must first complete your dorm room application. 
+                This helps us match you with the right room and roommates.
+              </p>
+              <div className="flex gap-4">
+                <Link href="/application">
+                  <Button>Submit Application</Button>
+                </Link>
+                <Link href="/dashboard">
+                  <Button variant="outline">Go to Dashboard</Button>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       </div>
     );
@@ -286,8 +354,8 @@ export default function AssignmentPage() {
           </Card>
         )}
 
-        {/* No Roommates Message */}
-        {assignment.roommates?.length === 0 && (assignment.room?.current_occupancy || 0) < (assignment.room?.max_capacity || 1) && (
+        {/* No Roommates Message - only show if actually alone (current_occupancy is 1) */}
+        {(assignment.room?.current_occupancy || 1) === 1 && (assignment.room?.current_occupancy || 0) < (assignment.room?.max_capacity || 1) && (
           <Card className="mb-6">
             <CardContent className="py-6">
               <p className="text-gray-600 text-center">
