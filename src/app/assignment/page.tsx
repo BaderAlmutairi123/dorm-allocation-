@@ -32,6 +32,7 @@ interface Assignment {
   block_id?: number;
   status: string;
   assignment_date?: string;
+  block_member_count?: number | null; // Block member count if in a block
   room: {
     room_id: number;
     room_number: string;
@@ -220,8 +221,8 @@ export default function AssignmentPage() {
               <div>
                 <p className="text-sm text-gray-600 mb-1">Capacity</p>
                 <p className="text-xl font-semibold">
-                  {/* Calculate current occupancy from roommates (including current user) */}
-                  {(assignment.roommates?.length || 0) + 1} / {
+                  {/* Use block_member_count if in a block, otherwise use current_occupancy */}
+                  {assignment.block_member_count ?? assignment.room?.current_occupancy ?? ((assignment.roommates?.length || 0) + 1)} / {
                     /* Use max_capacity from DB, or infer from room_type if not set */
                     assignment.room?.max_capacity ||
                     (assignment.room?.room_type === 'Single' ? 1 :

@@ -586,8 +586,16 @@ export async function DELETE(request: NextRequest) {
     }
 
     // ============================================
-    // STEP 2: Delete room assignment
+    // STEP 2: Delete room assignment and update room occupancy
     // ============================================
+    // First, get the room_id before deleting the assignment
+    const { data: existingAssignment } = await supabaseAdmin
+      .from('room_assignments')
+      .select('room_id')
+      .eq('student_id', studentId)
+      .maybeSingle()
+
+    // Delete the room assignment
     const { error: assignmentError } = await supabaseAdmin
       .from('room_assignments')
       .delete()
@@ -595,6 +603,30 @@ export async function DELETE(request: NextRequest) {
 
     if (assignmentError) {
       console.error('Error deleting room assignment:', assignmentError)
+    }
+
+    // If there was a room assignment, decrement the room's current_occupancy
+    if (existingAssignment && existingAssignment.room_id) {
+      const roomId = existingAssignment.room_id
+      
+      // Get all rooms and find the one matching room_id (handles 'room.id' column name)
+      const { data: allRooms } = await supabaseAdmin
+        .from('rooms')
+        .select('*')
+
+      const room = allRooms?.find((r: any) => {
+        const rId = r['room.id'] || r.id
+        return rId === roomId || String(rId) === String(roomId)
+      })
+
+      if (room && room.current_occupancy !== null && room.current_occupancy > 0) {
+        // Decrement occupancy - update by dorm_id and room_number since 'room.id' column name is tricky
+        await supabaseAdmin
+          .from('rooms')
+          .update({ current_occupancy: room.current_occupancy - 1 })
+          .eq('dorm_id', room.dorm_id)
+          .eq('room_number', room.room_number)
+      }
     }
 
     // ============================================

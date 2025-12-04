@@ -109,18 +109,39 @@ export async function GET(
     // Get roommates if room is assigned (include both Confirmed and Pending)
     let roommates: any[] = []
     if (assignment.room_id) {
+      // First get all roommate student IDs
       const { data: roommateAssignments } = await supabase
         .from('room_assignments')
-        .select('student_id, status, students(first_name, last_name, email, major)')
+        .select('student_id, status')
         .eq('room_id', assignment.room_id)
         .in('status', ['Confirmed', 'Pending'])
         .neq('student_id', student_id)
 
-      if (roommateAssignments) {
-        roommates = roommateAssignments.map(ra => ({
-          student_id: ra.student_id,
-          ...ra.students,
-        }))
+      if (roommateAssignments && roommateAssignments.length > 0) {
+        // Fetch student details separately to avoid join issues
+        const roommateIds = roommateAssignments.map(ra => ra.student_id)
+        const { data: roommateStudents } = await supabase
+          .from('students')
+          .select('student_id, first_name, last_name, email, major')
+          .in('student_id', roommateIds)
+
+        if (roommateStudents) {
+          roommates = roommateStudents
+        }
+      }
+    }
+
+    // Get block member count if student is in a block
+    let blockMemberCount: number | null = null
+    if (assignment.block_id) {
+      const { data: block } = await supabase
+        .from('student_blocks')
+        .select('current_capacity')
+        .eq('block_id', assignment.block_id)
+        .single()
+
+      if (block && block.current_capacity !== null && block.current_capacity !== undefined) {
+        blockMemberCount = block.current_capacity
       }
     }
 
@@ -138,6 +159,9 @@ export async function GET(
       }
     }
 
+    // Use block member count if available, otherwise use calculated occupancy
+    const displayOccupancy = blockMemberCount !== null ? blockMemberCount : actualOccupancy
+
     return NextResponse.json({
       status: assignment.status,
       assignment: {
@@ -146,14 +170,15 @@ export async function GET(
         block_id: assignment.block_id,
         status: assignment.status,
         assignment_date: assignment.assignment_date,
+        block_member_count: blockMemberCount, // Include block member count in response
         room: roomData ? {
           room_id: roomData['room.id'] || roomData.room_id,
           room_number: roomData.room_number,
           floor_number: roomData.floor_number,
           room_type: roomData.room_type,
           max_capacity: roomData.max_capacity,
-          // Use the calculated actual occupancy instead of stored value
-          current_occupancy: actualOccupancy,
+          // Use block member count if in a block, otherwise use calculated occupancy
+          current_occupancy: displayOccupancy,
           wants_suite_bathroom: roomData.wants_suite_bathroom,
           is_accessible: roomData.is_accessible,
           dorm: dormData ? {

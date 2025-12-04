@@ -469,13 +469,50 @@ export async function runMatchingAlgorithm(): Promise<{
     for (const [blockId, blockStudents] of blockGroups.entries()) {
       const totalSize = blockStudents.length
       
+      // Get block info to determine intended room type
+      let blockMaxCapacity: number | null = null
+      try {
+        const { data: blockInfo } = await supabaseAdmin
+          .from('student_blocks')
+          .select('max_capacity')
+          .eq('block_id', parseInt(blockId))
+          .single()
+        if (blockInfo) {
+          blockMaxCapacity = blockInfo.max_capacity
+        }
+      } catch (err) {
+        console.warn(`Could not fetch block info for ${blockId}:`, err)
+      }
+      
+      // Determine expected room type from block max_capacity
+      // max_capacity 1 = Single, 2 = Double, 4 = Suite
+      const expectedRoomType = blockMaxCapacity === 1 ? 'single' : 
+                               blockMaxCapacity === 2 ? 'double' : 
+                               blockMaxCapacity === 4 ? 'suite' : null
+      
       // Find a room that can accommodate the entire block - ONLY empty rooms (0 occupancy)
+      // AND matches the block's intended room type
       const suitableRoom = rooms.find(room => {
         const occupancyFromMap = occupancy.get(room.id)
         const roomOccupancy = room.current_occupancy || 0
         const currentOccupancy = occupancyFromMap !== undefined ? occupancyFromMap : roomOccupancy
-        // Only use completely empty rooms
-        return currentOccupancy === 0 && room.capacity >= totalSize
+        const isEmpty = currentOccupancy === 0
+        const hasCapacity = room.capacity >= totalSize
+        
+        if (!isEmpty || !hasCapacity) return false
+        
+        // CRITICAL: Verify room type matches block's intended room type
+        if (expectedRoomType) {
+          const roomTypeLower = room.room_type?.toLowerCase() || ''
+          const matchesType = roomTypeLower === expectedRoomType
+          
+          if (!matchesType) {
+            console.log(`  Block ${blockId}: REJECTED room ${room.room_number} - type "${roomTypeLower}" doesn't match expected "${expectedRoomType}" (block max_capacity=${blockMaxCapacity})`)
+            return false
+          }
+        }
+        
+        return true
       })
 
       if (suitableRoom && suitableRoom.id) {
@@ -528,6 +565,8 @@ export async function runMatchingAlgorithm(): Promise<{
       
       genderStudents.forEach(student => {
         const pref = student.preferences?.preferred_room_type?.toLowerCase()
+        // Only process as single room student if explicitly "single"
+        // All other preferences (Double, Suite, null) go to shared room students
         if (pref === 'single') {
           singleRoomStudents.push(student)
         } else {
@@ -711,14 +750,31 @@ export async function runMatchingAlgorithm(): Promise<{
             const hasSpace = currentOccupancy > 0 && currentOccupancy < room.capacity
             if (!hasSpace) return false
             
-            // Match room type preference
+            const roomTypeLower = room.room_type?.toLowerCase() || ''
+            
+            // CRITICAL: If student has a room type preference, it MUST match exactly
             if (roomTypePreference) {
-              const roomTypeLower = room.room_type?.toLowerCase()
-              const prefTypeLower = roomTypePreference.toLowerCase()
-              return roomTypeLower === prefTypeLower
+              const prefTypeLower = roomTypePreference.toLowerCase().trim()
+              
+              // Explicitly reject Single rooms for any non-Single preference
+              if (roomTypeLower === 'single' && prefTypeLower !== 'single') {
+                console.log(`  Partially filled room ${room.room_number}: REJECTED - Single room but student wants ${prefTypeLower}`)
+                return false
+              }
+              
+              // Must match exactly
+              const matches = roomTypeLower === prefTypeLower
+              if (!matches) {
+                console.log(`  Partially filled room ${room.room_number}: REJECTED - type mismatch (${roomTypeLower} vs ${prefTypeLower})`)
+              }
+              return matches
             }
+            
             // No preference = only match Double or Suite (not Single)
-            return room.room_type?.toLowerCase() !== 'single'
+            if (roomTypeLower === 'single') {
+              return false
+            }
+            return true
           })
           
           console.log(`Found ${partiallyFilledRooms.length} partially filled ${roomTypePreference || 'shared'} rooms`)
@@ -811,6 +867,7 @@ export async function runMatchingAlgorithm(): Promise<{
           }
           
           // STEP 3: Find empty room that matches room type preference
+          // CRITICAL: Students with Double/Suite preference must NEVER get Single rooms
           let suitableRooms = rooms.filter(room => {
             const occupancyFromMap = occupancy.get(room.id)
             const roomOccupancy = room.current_occupancy || 0
@@ -818,16 +875,36 @@ export async function runMatchingAlgorithm(): Promise<{
             const isEmpty = currentOccupancy === 0
             if (!isEmpty) return false
             
-            // Strictly match room type
+            const roomTypeLower = room.room_type?.toLowerCase() || ''
+            
+            // CRITICAL: If student has a room type preference, it MUST match exactly
             if (roomTypePreference) {
-              const roomTypeLower = room.room_type?.toLowerCase()
-              const prefTypeLower = roomTypePreference.toLowerCase()
+              const prefTypeLower = roomTypePreference.toLowerCase().trim()
+              
+              // Explicitly reject Single rooms for any non-Single preference
+              if (roomTypeLower === 'single' && prefTypeLower !== 'single') {
+                console.log(`  Room ${room.room_number}: REJECTED - Single room but student wants ${prefTypeLower}`)
+                return false
+              }
+              
+              // Must match exactly
               const matches = roomTypeLower === prefTypeLower
               console.log(`  Room ${room.room_number} (id=${room.id}): type="${room.room_type}" (${roomTypeLower}) vs preference "${prefTypeLower}", capacity=${room.capacity}, occupancy=${currentOccupancy}, isEmpty=${isEmpty} -> match=${matches}`)
+              
+              if (!matches) {
+                console.log(`  Room ${room.room_number}: REJECTED - type mismatch`)
+              }
+              
               return matches
             }
+            
             // No preference = only match Double or Suite (not Single)
-            return room.room_type?.toLowerCase() !== 'single'
+            // But this should rarely happen if preferences are properly saved
+            if (roomTypeLower === 'single') {
+              console.log(`  Room ${room.room_number}: REJECTED - Single room but student has no preference (defaulting to shared)`)
+              return false
+            }
+            return true
           })
           
           console.log(`Found ${suitableRooms.length} empty ${roomTypePreference || 'shared'} rooms`)

@@ -169,7 +169,7 @@ export async function POST(request: NextRequest) {
         // Leader has a room - update joining student to same room
         if (existingAssignment) {
           // Update existing assignment to match leader's room
-          await dbClient
+          const { error: updateAssignmentError } = await dbClient
             .from('room_assignments')
             .update({
               block_id: block.block_id,
@@ -177,9 +177,13 @@ export async function POST(request: NextRequest) {
               status: leaderAssignment.status === 'Confirmed' ? 'Confirmed' : 'Pending',
             })
             .eq('student_id', user.id)
+          
+          if (updateAssignmentError) {
+            console.error('Error updating room assignment:', updateAssignmentError)
+          }
         } else {
           // Create new assignment matching leader's room
-          await dbClient
+          const { error: insertAssignmentError } = await dbClient
             .from('room_assignments')
             .insert({
               student_id: user.id,
@@ -187,23 +191,32 @@ export async function POST(request: NextRequest) {
               room_id: leaderAssignment.room_id,
               status: leaderAssignment.status === 'Confirmed' ? 'Confirmed' : 'Pending',
             })
+          
+          if (insertAssignmentError) {
+            console.error('Error creating room assignment:', insertAssignmentError)
+          }
         }
 
-        // Update the room's current_occupancy by counting all confirmed assignments
-        const { data: roomAssignments } = await dbClient
+        // Wait a moment to ensure the database has committed the assignment update
+        // Then update the room's current_occupancy by counting all assignments
+        // Use a fresh query to ensure we get the latest data
+        const { data: roomAssignments, error: countError } = await dbClient
           .from('room_assignments')
           .select('student_id')
           .eq('room_id', leaderAssignment.room_id)
           .in('status', ['Confirmed', 'Pending'])
 
-        const newOccupancy = roomAssignments?.length || 1
-        console.log(`Updating room ${leaderAssignment.room_id} occupancy to ${newOccupancy}`)
+        if (countError) {
+          console.error('Error counting room assignments:', countError)
+        }
+
+        const newOccupancy = roomAssignments?.length || 0
+        console.log(`Room ${leaderAssignment.room_id} now has ${newOccupancy} assignments (should be 2 for double room)`)
 
         // Get room details to find dorm_id and room_number for update
         const { data: roomData } = await dbClient
           .from('rooms')
           .select('*')
-          .limit(100)
 
         // Find the room by matching room_id (column might be 'room.id' or 'id')
         const targetRoom = roomData?.find((r: any) => {
@@ -212,13 +225,19 @@ export async function POST(request: NextRequest) {
         })
 
         if (targetRoom) {
-          await dbClient
+          const { error: updateRoomError } = await dbClient
             .from('rooms')
             .update({ current_occupancy: newOccupancy })
             .eq('dorm_id', targetRoom.dorm_id)
             .eq('room_number', targetRoom.room_number)
           
-          console.log(`Updated room ${targetRoom.room_number} in dorm ${targetRoom.dorm_id} to occupancy ${newOccupancy}`)
+          if (updateRoomError) {
+            console.error('Error updating room occupancy:', updateRoomError)
+          } else {
+            console.log(`✓ Updated room ${targetRoom.room_number} in dorm ${targetRoom.dorm_id} to occupancy ${newOccupancy}`)
+          }
+        } else {
+          console.error(`Could not find room with room_id ${leaderAssignment.room_id}`)
         }
       } else {
         // Leader doesn't have a room yet - just set block_id
